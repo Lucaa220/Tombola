@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 # Crea l'ambiente virtuale
 RUN python -m venv /opt/venv
 
-# Imposta il PATH in modo che usi l'ambiente virtuale
+# Imposta il PATH per usare l'ambiente virtuale
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Aggiorna pip
