@@ -1,7 +1,7 @@
-# Usa un'immagine base di Python
+# Usa un'immagine base Python
 FROM python:3.9-slim
 
-# Installa i pacchetti di sistema necessari per compilare eventuali dipendenze Python
+# Installa i pacchetti di sistema necessari
 RUN apt-get update && apt-get install -y \
     build-essential \
     libssl-dev \
@@ -9,20 +9,22 @@ RUN apt-get update && apt-get install -y \
     python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Crea un ambiente virtuale e aggiungilo al PATH
+# Crea l'ambiente virtuale
 RUN python -m venv /opt/venv
+
+# Imposta il PATH in modo che usi il venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Aggiorna pip
 RUN pip install --upgrade pip
 
 # Copia il file dei requisiti e installa le dipendenze
-COPY requirements.txt /app/requirements.txt
 WORKDIR /app
+COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Copia il resto del codice dell'applicazione nella cartella /app
-COPY . /app
+# Copia tutto il resto del codice nell'immagine
+COPY . .
 
-# Comando per avviare il bot. Assicurati che "main.py" sia il file giusto.
+# Comando per avviare il bot (modifica "main.py" se il file principale si chiama diversamente)
 CMD ["python", "main.py"]
