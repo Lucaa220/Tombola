@@ -9,24 +9,16 @@ RUN apt-get update && apt-get install -y \
     python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Crea l'ambiente virtuale
-RUN python -m venv /opt/venv
-
-# Imposta il PATH per usare l'ambiente virtuale
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Aggiorna pip
-RUN pip install --upgrade pip
-
-# Imposta la directory di lavoro e copia il file dei requisiti
+# Imposta la directory di lavoro
 WORKDIR /app
-COPY requirements.txt .
 
-# Installa le dipendenze
-RUN pip install -r requirements.txt
+# Copia il file requirements.txt e installa le dipendenze
+COPY requirements.txt /app/
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
 
-# Copia tutto il resto del codice
-COPY . .
+# Copia il resto del codice dell'applicazione
+COPY . /app/
 
-# Comando per avviare il bot (modifica "main.py" se il file principale ha un nome diverso)
+# Comando per avviare il bot
 CMD ["python", "main.py"]
