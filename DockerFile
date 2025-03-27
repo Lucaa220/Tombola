@@ -28,5 +28,5 @@ RUN pip install -r requirements.txt
 # Copia tutto il resto del codice
 COPY . .
 
-# Comando per avviare il bot (modifica "main.py" se il file principale ha un altro nome)
+# Comando per avviare il bot (modifica "main.py" se il file principale ha un nome diverso)
 CMD ["python", "main.py"]
