@@ -12,19 +12,21 @@ RUN apt-get update && apt-get install -y \
 # Crea l'ambiente virtuale
 RUN python -m venv /opt/venv
 
-# Imposta il PATH in modo che usi il venv
+# Imposta il PATH in modo che usi l'ambiente virtuale
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Aggiorna pip
 RUN pip install --upgrade pip
 
-# Copia il file dei requisiti e installa le dipendenze
+# Imposta la directory di lavoro e copia il file dei requisiti
 WORKDIR /app
 COPY requirements.txt .
+
+# Installa le dipendenze
 RUN pip install -r requirements.txt
 
-# Copia tutto il resto del codice nell'immagine
+# Copia tutto il resto del codice
 COPY . .
 
-# Comando per avviare il bot (modifica "main.py" se il file principale si chiama diversamente)
+# Comando per avviare il bot (modifica "main.py" se il file principale ha un altro nome)
 CMD ["python", "main.py"]
