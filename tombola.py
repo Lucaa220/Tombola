@@ -360,13 +360,34 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await button(update, context)
 
-def main():
+async def handle(request):
+    return web.Response(text="Il bot è attivo!")
+
+async def start_webserver():
+    port = int(os.environ.get("PORT", 3000))
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info(f"Web server avviato sulla porta {port}")
+    # Mantieni il server attivo
+    while True:
+        await asyncio.sleep(3600)
+
+# Modifica la funzione main per avviare sia il bot che il web server
+async def main():
     logger.info("Configurazione del bot...")
-    application = Application.builder().token("7381498096:AAE_ZL6FxB3fLsiB-nCR9MDiozJ5afnQv20").build()
+    # Legge il token dall'ambiente (assicurati di impostarlo nelle variabili di Railway)
+    token = os.environ.get("TOKEN")
+    if not token:
+        logger.error("Token non impostato! Imposta la variabile d'ambiente TOKEN.")
+        return
 
-    start_handler = CommandHandler("start", start)
-    application.add_handler(start_handler)
+    application = Application.builder().token(token).build()
 
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("trombola", start_game))
     application.add_handler(CommandHandler("estrai", estrai))
     application.add_handler(CommandHandler("stop", stop_game))
@@ -381,9 +402,11 @@ def main():
     application.add_handler(CallbackQueryHandler(combined_button_handler))
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
-
     logger.info("Avvio del bot...")
-    application.run_polling()
+    # Avvia in parallelo il polling del bot e il web server
+    bot_task = asyncio.create_task(application.run_polling())
+    web_task = asyncio.create_task(start_webserver())
+    await asyncio.gather(bot_task, web_task)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
