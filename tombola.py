@@ -9,6 +9,10 @@ from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save
 import logging
 from log import send_logs_by_group, handle_all_commands
 from telegram.constants import ParseMode
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Impostazioni logger
 logging.basicConfig(level=logging.INFO)
