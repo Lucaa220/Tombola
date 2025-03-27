@@ -1,24 +1,12 @@
-# Usa un'immagine base Python
 FROM python:3.9-slim
 
-# Installa i pacchetti di sistema necessari
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
-    python3-dev && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libpq-dev && rm -rf /var/lib/apt/lists/*
 
-# Imposta la directory di lavoro
 WORKDIR /app
 
-# Copia il file requirements.txt e installa le dipendenze
 COPY requirements.txt /app/
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Copia il resto del codice dell'applicazione
 COPY . /app/
 
-# Comando per avviare il bot
 CMD ["python", "main.py"]
