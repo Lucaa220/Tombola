@@ -307,7 +307,7 @@ async def main():
     
     logger.info("Configurazione del bot...")
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://your-app-name.onrender.com/{TOKEN}')
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://tombola.onrender.com/{TOKEN}')
     PORT = int(os.getenv('PORT', 8080))
     
     # Creazione dell'applicazione
