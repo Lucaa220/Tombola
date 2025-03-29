@@ -8,6 +8,7 @@ import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
 import json
+import os.path
 
 load_dotenv()
 
@@ -230,7 +231,7 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Solo gli amministratori possono vedere la classifica.")
         return
 
-    file_classifiche = "classifiche.json"
+    file_classifiche = os.path.join(os.path.dirname(__file__), "classifiche.json")
     if not os.path.exists(file_classifiche):
         await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile", message_thread_id=thread_id)
         return
