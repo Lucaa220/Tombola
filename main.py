@@ -294,10 +294,11 @@ async def setup_webapp():
     # Creazione dell'app web
     app = web.Application()
     
-    # Aggiungi route per webhook e controllo salute
+    # Aggiungi route per webhook, controllo salute e root
     app.router.add_post(f'/{TOKEN}', webhook_handler)
     app.router.add_get('/health', health_check)
-    
+    app.router.add_get('/', health_check)  # Aggiungi questa linea
+
     return app
 
 async def main():
