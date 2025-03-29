@@ -287,7 +287,7 @@ async def webhook_handler(request):
 
 # Funzione per gestire il controllo di salute
 async def health_check(request):
-    return web.Response(text="Bot attivo!")
+    return web.Response(text="Funziona il merdina!")
 
 # Configurazione del server web per webhook
 async def setup_webapp():
