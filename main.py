@@ -13,11 +13,10 @@ import os.path
 load_dotenv()
 
 # Importa i tuoi moduli locali
-from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole  # Assicurati che questi siano corretti
-from game_instance import get_game  # Assicurati che questo sia corretto
-from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added  # Assicurati che questi siano corretti
-from log import send_logs_by_group, handle_all_commands # Assicurati che questi siano corretti
-
+from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole
+from game_instance import get_game
+from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added
+from log import send_logs_by_group, handle_all_commands
 
 # Impostazioni logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -127,7 +126,7 @@ async def show_bonus_menu(query, chat_id, settings):
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Questo è il posto giusto se vuoi mettere un po’ di pepe alle tue partite, attiva i bonus e i malus se vuoi che "
+    text = ("_🆗 Questo è il posto giusto se vuoi mettere un po' di pepe alle tue partite, attiva i bonus e i malus se vuoi che "
             "la classifica sia un pochino più combattuta, se invece sei un tradizionalista, tieni l'opzione disattivata\\:_")
     try:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
@@ -275,14 +274,47 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await button(update, context)
 
-def main():
+# Funzione per gestire la richiesta webhook
+async def webhook_handler(request):
+    try:
+        update_data = await request.json()
+        update = Update.de_json(update_data, application.bot)
+        await application.process_update(update)
+        return web.Response(text="OK")
+    except Exception as e:
+        logger.error(f"Errore nel webhook handler: {e}")
+        return web.Response(status=500, text=f"Errore: {e}")
+
+# Funzione per gestire il controllo di salute
+async def health_check(request):
+    return web.Response(text="Bot attivo!")
+
+# Configurazione del server web per webhook
+async def setup_webapp():
+    # Creazione dell'app web
+    app = web.Application()
+    
+    # Aggiungi route per webhook e controllo salute
+    app.router.add_post(f'/{TOKEN}', webhook_handler)
+    app.router.add_get('/health', health_check)
+    
+    return app
+
+async def main():
+    # Configurazione del bot
+    global application
+    global TOKEN
+    
     logger.info("Configurazione del bot...")
     TOKEN = os.getenv('TOKEN')
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://your-app-name.onrender.com/{TOKEN}')
+    PORT = int(os.getenv('PORT', 8080))
+    
+    # Creazione dell'applicazione
     application = Application.builder().token(TOKEN).build()
-
-    start_handler = CommandHandler("start", start)
-    application.add_handler(start_handler)
-
+    
+    # Registrazione degli handler
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("trombola", start_game))
     application.add_handler(CommandHandler("estrai", estrai))
     application.add_handler(CommandHandler("stop", stop_game))
@@ -296,10 +328,28 @@ def main():
     application.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
     application.add_handler(CallbackQueryHandler(combined_button_handler))
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
-
-
-    logger.info("Avvio del bot...")
-    application.run_polling()
+    
+    # Impostazione del webhook
+    await application.bot.set_webhook(url=WEBHOOK_URL)
+    logger.info(f"Webhook impostato su {WEBHOOK_URL}")
+    
+    # Configurazione e avvio del server web
+    app = await setup_webapp()
+    
+    # Creazione e avvio server
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    
+    logger.info(f"Avvio del server web sulla porta {PORT}...")
+    await site.start()
+    
+    # Mantieni il processo attivo
+    logger.info("Bot avviato con webhook, in attesa di richieste...")
+    
+    # Rimani in ascolto
+    while True:
+        await asyncio.sleep(3600)  # Controlla ogni ora
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
