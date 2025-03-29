@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tombolabot
+    env: python
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: python tombola.py
+    plan: free
+    runtime: python3
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.8
