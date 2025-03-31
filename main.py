@@ -301,7 +301,7 @@ async def setup_webapp():
     app = web.Application()
     
     # Aggiungi route per webhook, controllo salute e root
-    app.router.add_post(f'/{TOKEN}', webhook_handler)
+    app.router.add_post('/webhook', webhook_handler)
     app.router.add_get('/health', health_check)
     app.router.add_get('/', health_check)  # Aggiungi questa linea
 
@@ -323,8 +323,8 @@ async def main():
     
     logger.info("Configurazione del bot...")
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://tombola.onrender.com/{TOKEN}')
-    PORT = int(os.getenv('PORT', 8080))
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://tombola.onrender.com/webhook')
+    PORT = int(os.getenv('PORT', 10000))
     
     # Creazione dell'applicazione
     application = Application.builder().token(TOKEN).build()
