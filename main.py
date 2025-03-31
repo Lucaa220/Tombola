@@ -284,12 +284,11 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
         await button(update, context)
 
 async def webhook_handler(request):
-    # Rispondi immediatamente a Telegram
-    response_task = asyncio.create_task(web.Response(text="OK"))
+    # Crea direttamente la risposta senza asyncio.create_task()
+    response = web.Response(text="OK")
     
     # Inizializza update a None per evitare errori in caso di eccezioni
     update = None
-    
     try:
         update_data = await request.json()
         logger.info("Aggiornamento ricevuto: %s", update_data)
@@ -298,7 +297,7 @@ async def webhook_handler(request):
     except Exception as e:
         logger.error("Errore nel webhook handler: %s", e)
     
-    return await response_task
+    return response
     
 async def health_check(request):
     # Aggiungi un controllo più completo qui
