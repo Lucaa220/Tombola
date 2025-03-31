@@ -285,10 +285,16 @@ async def webhook_handler(request):
         logger.error(f"Errore nel webhook handler: {e}")
         return web.Response(status=500, text=f"Errore: {e}")
 
-# Funzione per gestire il controllo di salute
 async def health_check(request):
-    return web.Response(text="Funziona il merdina!")
-
+    # Aggiungi un controllo più completo qui
+    try:
+        # Verifica se il bot è online
+        me = await application.bot.get_me()
+        return web.Response(text=f"Bot {me.username} attivo!")
+    except Exception as e:
+        logger.error(f"Errore nel health check: {e}")
+        return web.Response(status=500, text="Bot non disponibile")
+        
 # Configurazione del server web per webhook
 async def setup_webapp():
     # Creazione dell'app web
@@ -300,6 +306,15 @@ async def setup_webapp():
     app.router.add_get('/', health_check)  # Aggiungi questa linea
 
     return app
+    
+async def self_ping():
+    while True:
+        try:
+            logger.info("Self-ping per mantenere il servizio attivo")
+            # Puoi anche eseguire operazioni di manutenzione qui
+            await asyncio.sleep(14 * 60)  # 14 minuti (sotto i 15 min di Render)
+        except Exception as e:
+            logger.error(f"Errore nel self-ping: {e}")
 
 async def main():
     # Configurazione del bot
@@ -351,6 +366,8 @@ async def main():
     # Rimani in ascolto
     while True:
         await asyncio.sleep(3600)  # Controlla ogni ora
+
+    asyncio.create_task(self_ping())
 
 if __name__ == '__main__':
     asyncio.run(main())
