@@ -21,6 +21,7 @@ from log import send_logs_by_group, handle_all_commands
 
 # Configura il logging su stdout
 handler = logging.StreamHandler(sys.stdout)
+logger = logging.getLogger(__name__)
 handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
@@ -29,7 +30,6 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # Dizionario premi di default
 premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
