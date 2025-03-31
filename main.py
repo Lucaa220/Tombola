@@ -9,6 +9,7 @@ from aiohttp import web
 from dotenv import load_dotenv
 import json
 import os.path
+import sys
 
 load_dotenv()
 
@@ -18,7 +19,15 @@ from game_instance import get_game
 from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added
 from log import send_logs_by_group, handle_all_commands
 
-# Impostazioni logger
+# Configura il logging su stdout
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
