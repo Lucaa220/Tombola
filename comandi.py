@@ -102,6 +102,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    logger.info("Ricevuto comando /start da %s", update.effective_user.username)
     if context.args:
         command_argument = context.args[0]
         if command_argument.startswith("join_game_"):
