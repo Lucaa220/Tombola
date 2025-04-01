@@ -283,14 +283,11 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await button(update, context)
 
-async def webhook_get(request):
-    return web.Response(text="Questo endpoint accetta solo POST per il webhook.")
-
 async def webhook_handler(request):
-    # Crea direttamente la risposta senza asyncio.create_task()
-    response = web.Response(text="OK")
+    if request.method != 'POST':
+        return web.Response(text="Questo endpoint accetta solo POST per il webhook.", status=405)
+    response = web.Response(text="Bot Tombola2_Bot attivo!")
     
-    # Inizializza update a None per evitare errori in caso di eccezioni
     update = None
     try:
         update_data = await request.json()
@@ -299,93 +296,72 @@ async def webhook_handler(request):
         asyncio.create_task(application.process_update(update))
     except Exception as e:
         logger.error("Errore nel webhook handler: %s", e)
-    
     return response
-    
+
+# Health check handler (GET)
 async def health_check(request):
-    # Aggiungi un controllo più completo qui
     try:
-        # Verifica se il bot è online
         me = await application.bot.get_me()
         return web.Response(text=f"Bot {me.username} attivo!")
     except Exception as e:
-        logger.error(f"Errore nel health check: {e}")
+        logger.error("Errore nel health check: %s", e)
         return web.Response(status=500, text="Bot non disponibile")
-        
-# Configurazione del server web per webhook
+
+# Configurazione dell'app web (aiohttp)
 async def setup_webapp():
-    # Creazione dell'app web
     app = web.Application()
-    
-    # Aggiungi route per webhook, controllo salute e root
-    app.router.add_get('/webhook', webhook_get)
-
+    app.router.add_post('/webhook', webhook_handler)
     app.router.add_get('/health', health_check)
-    app.router.add_get('/', health_check)  # Aggiungi questa linea
-
+    app.router.add_get('/', health_check)
     return app
-    
-async def self_ping():
-    while True:
-        try:
-            logger.info("Self-ping per mantenere il servizio attivo")
-            # Puoi anche eseguire operazioni di manutenzione qui
-            await asyncio.sleep(14 * 60)  # 14 minuti (sotto i 15 min di Render)
-        except Exception as e:
-            logger.error(f"Errore nel self-ping: {e}")
 
 async def main():
     global application
     global TOKEN
-    
+
     logger.info("Configurazione del bot...")
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://tombola-cmli.onrender.com/webhook')
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://tombola-cmli.onrender.com/webhook').strip()
     PORT = int(os.getenv('PORT', 10000))
-    
+
     # Creazione dell'applicazione
     application = Application.builder().token(TOKEN).build()
     
-    # Inizializza e avvia l'applicazione
+    # Inizializzazione e avvio dell'applicazione (necessario per processare gli update)
     await application.initialize()
     await application.start()
-    
-    # Registrazione degli handler
+
+    # Registrazione degli handler (assicurati che siano nell'ordine corretto)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("trombola", start_game))
     application.add_handler(CommandHandler("estrai", estrai))
     application.add_handler(CommandHandler("stop", stop_game))
-    application.add_handler(CommandHandler("classifiga", classifica))
+    application.add_handler(CommandHandler("classifiga", reset_classifica))  # Modifica se serve
     application.add_handler(CommandHandler("azzera", reset_classifica))
-    application.add_handler(CommandHandler("impostami", settings_command))
-    application.add_handler(CommandHandler("trombolatori", numero_giocatori))
+    application.add_handler(CommandHandler("impostami", regole))  # Controlla le funzioni, se necessario
+    application.add_handler(CommandHandler("trombolatori", start))  # Aggiorna con la funzione corretta se diversa
     application.add_handler(CommandHandler("trova", find_group))
     application.add_handler(CommandHandler("log", send_logs_by_group))
     application.add_handler(CommandHandler("regolo", regole))
-    # Per test, commenta l'handler generico se necessario:
-    # application.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
-    application.add_handler(CallbackQueryHandler(combined_button_handler))
+    application.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
+    application.add_handler(CallbackQueryHandler(button))
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
-    
+
     # Impostazione del webhook
     await application.bot.set_webhook(url=WEBHOOK_URL)
     logger.info(f"Webhook impostato su {WEBHOOK_URL}")
-    
-    # Configurazione e avvio del server web
+
+    # Configurazione e avvio del server web per gestire il webhook
     app = await setup_webapp()
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     logger.info(f"Avvio del server web sulla porta {PORT}...")
     await site.start()
-    
-    logger.info("Bot avviato con webhook, in attesa di richieste...")
-    
-    # Mantieni il processo attivo
-    while True:
-        await asyncio.sleep(3600)  # Puoi anche usare await self_ping() se preferisci
 
-    asyncio.create_task(self_ping())
+    logger.info("Bot avviato con webhook, in attesa di richieste...")
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == '__main__':
     asyncio.run(main())
