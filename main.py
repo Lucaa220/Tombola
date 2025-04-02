@@ -336,10 +336,10 @@ async def main():
     application.add_handler(CommandHandler("trombola", start_game))
     application.add_handler(CommandHandler("estrai", estrai))
     application.add_handler(CommandHandler("stop", stop_game))
-    application.add_handler(CommandHandler("classifiga", reset_classifica))  # Modifica se serve
+    application.add_handler(CommandHandler("classifiga", classifica))  # Modifica se serve
     application.add_handler(CommandHandler("azzera", reset_classifica))
-    application.add_handler(CommandHandler("impostami", regole))  # Controlla le funzioni, se necessario
-    application.add_handler(CommandHandler("trombolatori", start))  # Aggiorna con la funzione corretta se diversa
+    application.add_handler(CommandHandler("impostami", settings_command))  # Controlla le funzioni, se necessario
+    application.add_handler(CommandHandler("trombolatori", numero_giocatori))  # Aggiorna con la funzione corretta se diversa
     application.add_handler(CommandHandler("trova", find_group))
     application.add_handler(CommandHandler("log", send_logs_by_group))
     application.add_handler(CommandHandler("regolo", regole))
