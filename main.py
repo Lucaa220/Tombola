@@ -344,7 +344,7 @@ async def main():
     application.add_handler(CommandHandler("log", send_logs_by_group))
     application.add_handler(CommandHandler("regolo", regole))
     application.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
-    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CallbackQueryHandler(combined_button_handler))
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # Impostazione del webhook
