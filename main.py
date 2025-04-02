@@ -291,7 +291,6 @@ async def webhook_handler(request):
     update = None
     try:
         update_data = await request.json()
-        logger.info("Aggiornamento ricevuto: %s", update_data)
         update = Update.de_json(update_data, application.bot)
         asyncio.create_task(application.process_update(update))
     except Exception as e:
