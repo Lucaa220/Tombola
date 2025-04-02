@@ -73,7 +73,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    text = "*📱 Benvenuto nel pannello di controllo!*\n\n_📲 Da dove vuoi iniziare la configurazione?_"
+    text = "*📱 Benvenuto nel pannello di controllo\\!*\n\n_📲 Da dove vuoi iniziare la configurazione\\?_"
     if update.callback_query:
         await message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
     else:
