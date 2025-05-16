@@ -25,7 +25,6 @@ def save_classifica_to_json(filename, all_scores):
     try:
         with open(filename, 'w', encoding='utf-8') as json_file:
             json.dump(all_scores, json_file, ensure_ascii=False, indent=4)
-        logger.info(f"Classifiche salvate correttamente nel file {filename}.")
     except Exception as e:
         logger.error(f"Errore durante il salvataggio delle classifiche nel file {filename}: {e}")
         return
@@ -41,18 +40,14 @@ def save_classifica_to_json(filename, all_scores):
         logger.error(f"Errore nel push su GitHub: {e}")
 
 def update_player_score(group_id: int, user_id: int, score: int) -> None:
-    logger.info(f"Aggiornamento punteggio per gruppo {group_id}, utente {user_id}, punteggio {score}")
     classifica = load_classifica_from_json(group_id)
-    logger.info(f"Classifica prima dell'aggiornamento: {classifica}")
 
     if str(user_id) in classifica:
         classifica[str(user_id)] += score
     else:
         classifica[str(user_id)] = score
 
-    logger.info(f"Classifica dopo l'aggiornamento: {classifica}")
     save_classifica_to_json(group_id, classifica)
-    logger.info(f"Punteggio aggiornato per l'utente {user_id} nel gruppo {group_id}: {score} punti")
 
 class TombolaGame:
     def __init__(self):
@@ -115,7 +110,6 @@ class TombolaGame:
         while self.numeri_tombola and self.game_active:
             potential = self.numeri_tombola.pop(0)
             if not bonus_malus_enabled and potential in [104, 666]:
-                logger.info(f"Numero {potential} estratto ma bonus/malus disabilitati: salto il numero.")
                 continue
             number = potential
             break
@@ -128,7 +122,6 @@ class TombolaGame:
                     random_player = random.choice(list(self.players_in_game))
                     bonus_points = random.randint(1, 49)
                     self.add_score(random_player, bonus_points)
-                    logger.info(f"Numero 104 estratto! Al giocatore {random_player} sono stati assegnati {bonus_points} punti bonus.")
                     if context is not None:
                         try:
                             chat_member = await context.bot.get_chat_member(self.chat_id, random_player)
@@ -148,7 +141,6 @@ class TombolaGame:
                     random_player = random.choice(list(self.players_in_game))
                     malus_points = random.randint(1, 49)
                     self.add_score(random_player, -malus_points)
-                    logger.info(f"Numero 666 estratto! Al giocatore {random_player} sono stati rimossi {malus_points} punti malus.")
                     if context is not None:
                         try:
                             chat_member = await context.bot.get_chat_member(self.chat_id, random_player)
@@ -253,7 +245,6 @@ class TombolaGame:
 
         all_scores[str(self.chat_id)] = group_scores
         save_classifica_to_json("classifiche.json", all_scores)
-        logger.info(f"Punteggi aggiornati per il gruppo {self.chat_id}")
 
         self.overall_scores = group_scores
         self.current_game_scores.clear()
@@ -279,7 +270,6 @@ class TombolaGame:
         try:
             all_scores = load_classifica_from_json("classifiche.json")
             self.overall_scores = all_scores.get(str(self.chat_id), {})
-            logger.info(f"Punteggi caricati correttamente per il gruppo {self.chat_id}")
         except Exception as e:
             logger.error(f"Errore durante il caricamento dei punteggi: {e}")
             self.overall_scores = {}
