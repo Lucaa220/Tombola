@@ -12,19 +12,20 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_classifica_from_json(filename):
+def load_classifica_from_json(filename=CLASSIFICHE_FILE):
     try:
-        with open(filename, 'r') as json_file:
-            all_scores = json.load(json_file)
-        return all_scores
+        with open(filename, 'r', encoding='utf-8') as json_file:
+            return json.load(json_file)
     except Exception as e:
         logger.error(f"Errore durante il caricamento della classifica dal file {filename}: {e}")
         return {}
 
-def save_classifica_to_json(filename, all_scores):
+
+def save_classifica_to_json(all_scores, filename=CLASSIFICHE_FILE):
     try:
         with open(filename, 'w', encoding='utf-8') as json_file:
             json.dump(all_scores, json_file, ensure_ascii=False, indent=4)
+        logger.info(f"Classifiche salvate correttamente nel file {filename}.")
     except Exception as e:
         logger.error(f"Errore durante il salvataggio delle classifiche nel file {filename}: {e}")
         return
@@ -33,21 +34,28 @@ def save_classifica_to_json(filename, all_scores):
     try:
         push_json_to_github(
             local_json_path=filename,
-            commit_message="Aggiorno classifiche — " + datetime.utcnow().isoformat() + "Z"
+            commit_message=f"Aggiorno classifiche — {datetime.utcnow().isoformat()}Z"
         )
         logger.info("✅ Classifiche aggiornate anche su GitHub.")
     except Exception as e:
         logger.error(f"Errore nel push su GitHub: {e}")
 
+
 def update_player_score(group_id: int, user_id: int, score: int) -> None:
-    classifica = load_classifica_from_json(group_id)
+    # Carica tutte le classifiche
+    all_scores = load_classifica_from_json()
 
-    if str(user_id) in classifica:
-        classifica[str(user_id)] += score
+    key = str(group_id)
+    if key not in all_scores:
+        all_scores[key] = {}
+
+    if str(user_id) in all_scores[key]:
+        all_scores[key][str(user_id)] += score
     else:
-        classifica[str(user_id)] = score
+        all_scores[key][str(user_id)] = score
 
-    save_classifica_to_json(group_id, classifica)
+    # Salva e push su GitHub
+    save_classifica_to_json(all_scores)
 
 class TombolaGame:
     def __init__(self):
