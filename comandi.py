@@ -377,9 +377,10 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id, thread_id = get_chat_id_or_thread(update)
     sticker_file_id = "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
     file_classifiche = Path(__file__).parent / "classifiche.json"
+
     if not file_classifiche.exists():
         await context.bot.send_message(chat_id=chat_id,
-                                       text="*📊 Nessuna classifica disponibile\.*",
+                                       text="*📊 Nessuna classifica disponibile\\.*",
                                        message_thread_id=thread_id,
                                        parse_mode=ParseMode.MARKDOWN_V2)
         return
@@ -399,6 +400,7 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
         classifica_gruppo = classifiche[group_id]
         classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
         lines = []
+
         for pos, (user_id, punti) in enumerate(classifica_ordinata, start=1):
             if punti <= 0:
                 continue
@@ -410,15 +412,24 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
             lines.append(f"{pos}. @{nome}: {punti} punti")
 
         text = "🏆 Classifica:\n\n" + "\n".join(lines)
-        await context.bot.send_message(chat_id=chat_id,
-                                       text=text,
-                                       message_thread_id=thread_id)
-        await context.bot.send_sticker(chat_id=chat_id,
-                                       sticker=sticker_file_id,
-                                       message_thread_id=thread_id)
+        await context.bot.send_message(chat_id=chat_id, text=text, message_thread_id=thread_id)
+        await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
+
+        # 🔄 Salva di nuovo e push su GitHub
+        try:
+            with open(file_classifiche, "w", encoding="utf-8") as f:
+                json.dump(classifiche, f, ensure_ascii=False, indent=4)
+
+            push_json_to_github(
+                local_json_path=str(file_classifiche),
+                commit_message=f"Aggiornamento classifica gruppo {group_id} — {datetime.utcnow().isoformat()}Z"
+            )
+            logger.info("✅ Classifica aggiornata su GitHub.")
+        except Exception as e:
+            logger.error(f"Errore nel salvataggio o push della classifica finale: {e}")
     else:
         await context.bot.send_message(chat_id=chat_id,
-                                       text="*📊 Nessuna classifica disponibile\.*",
+                                       text="*📊 Nessuna classifica disponibile\\.*",
                                        message_thread_id=thread_id,
                                        parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -443,8 +454,11 @@ async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Solo gli amministratori possono resettare la classifica.")
         return
 
+    # Percorso al file locale
     file_classifiche = Path(__file__).parent / "classifiche.json"
     classifiche = {}
+
+    # Carica esistente, se presente
     if file_classifiche.exists():
         try:
             with open(file_classifiche, 'r', encoding='utf-8') as f:
@@ -454,11 +468,34 @@ async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     group_id = str(chat_id)
     if group_id in classifiche:
+        # 1) Reset del solo gruppo
         classifiche[group_id] = {}
-        # Salva e push su GitHub
-        save_classifica_to_json(str(file_classifiche), classifiche)
+
+        # 2) Salvataggio locale
+        try:
+            with open(file_classifiche, 'w', encoding='utf-8') as f:
+                json.dump(classifiche, f, ensure_ascii=False, indent=4)
+            logger.info(f"Classifiche resettate localmente per il gruppo {group_id}.")
+        except Exception as e:
+            logger.error(f"Errore nel salvataggio locale delle classifiche: {e}")
+            await update.message.reply_text("⚠️ Errore nel salvataggio della classifica.")
+            return
+
+        # 3) Push su GitHub
+        try:
+            push_json_to_github(
+                local_json_path=str(file_classifiche),
+                commit_message=f"Reset classifica gruppo {group_id} — {datetime.utcnow().isoformat()}Z"
+            )
+            logger.info("✅ Classifiche resettate anche su GitHub.")
+        except Exception as e:
+            logger.error(f"Errore nel push su GitHub: {e}")
+            await update.message.reply_text("⚠️ Errore durante l'aggiornamento su GitHub.")
+            return
+
+        # 4) Conferma all’utente
         await update.message.reply_text(
-            "_🚾 Complimenti hai scartato tutti i punteggi._",
+            "_🚾 Complimenti hai scartato tutti i punteggi per questo gruppo!_",
             parse_mode=ParseMode.MARKDOWN_V2
         )
     else:
