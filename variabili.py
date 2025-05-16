@@ -4,7 +4,9 @@ import logging
 import json
 import os
 from telegram.constants import ParseMode
-
+from pathlib import Path
+from game_instance import push_json_to_github
+from datetime import datetime
 # Impostazioni logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,24 +14,40 @@ logger = logging.getLogger(__name__)
 # Variabili globali per chat_id e thread_id
 chat_id_global = None
 thread_id_global = None
-SETTINGS_FILE = "group_settings.json"
+SETTINGS_FILE = Path(__file__).parent / "group_settings.json"
 OWNER_USER_ID = "547260823"
 
 
 def load_group_settings():
-    if not os.path.exists(SETTINGS_FILE):
-        return {}  # Se il file non esiste, restituisce un dizionario vuoto
-
-    with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
-        try:
+    if not SETTINGS_FILE.exists():
+        return {}
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
             return json.load(file)
-        except json.JSONDecodeError:
-            return {}  # Se il file è corrotto, ritorna un dizionario vuoto
+    except json.JSONDecodeError:
+        logger.error("Corrupted settings file, loading empty settings.")
+        return {}
+
 
 def save_group_settings(settings):
-    """Salva le impostazioni dei gruppi nel file group_settings.json."""
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as file:
-        json.dump(settings, file, indent=4, ensure_ascii=False)
+    """Salva le impostazioni dei gruppi nel file group_settings.json e le pusha su GitHub."""
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as file:
+            json.dump(settings, file, ensure_ascii=False, indent=4)
+        logger.info(f"Settings salvati correttamente in {SETTINGS_FILE}.")
+    except Exception as e:
+        logger.error(f"Errore durante il salvataggio delle impostazioni: {e}")
+        return
+
+    # Push su GitHub
+    try:
+        push_json_to_github(
+            local_json_path=str(SETTINGS_FILE),
+            commit_message="Aggiorno impostazioni — " + datetime.utcnow().isoformat() + "Z"
+        )
+        logger.info("✅ Impostazioni aggiornate anche su GitHub.")
+    except Exception as e:
+        logger.error(f"Errore nel push delle impostazioni su GitHub: {e}")
 
 # Funzione per ottenere chat_id e thread_id se applicabile
 def get_chat_id_or_thread(update: Update):
