@@ -27,12 +27,14 @@ def check_file_permissions() -> None:
     file_name = "classifiche.json"
     if os.path.exists(file_name):
         if os.access(file_name, os.W_OK):
+            logger.info(f"Il file {file_name} ha permessi di scrittura.")
         else:
             logger.error(f"Il file {file_name} non ha permessi di scrittura!")
     else:
         try:
             with open(file_name, 'w') as f:
                 json.dump({}, f)
+            logger.info(f"Creato nuovo file {file_name} con permessi di scrittura.")
         except Exception as e:
             logger.error(f"Impossibile creare il file {file_name}. Errore: {e}")
 
