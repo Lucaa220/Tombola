@@ -94,11 +94,9 @@ def get_admin_limitation(chat_id):
     settings = load_group_settings()
 
     if str(chat_id) not in settings:
-        logger.info(f"Impostazioni non trovate per chat {chat_id}, impostazione predefinita su 'limita_admin': True.")
         settings[str(chat_id)] = {'extraction_mode': 'manual', 'limita_admin': True}  # Impostazione predefinita: limita admin
         save_group_settings(settings)
     else:
-        logger.info(f"Stato corrente della limitazione admin per chat {chat_id}: {settings[str(chat_id)].get('limita_admin', True)}")
     
     return settings[str(chat_id)].get('limita_admin', True)
 
@@ -239,6 +237,5 @@ async def on_bot_added(update: Update, context: CallbackContext):
         # Invia il messaggio al proprietario
         try:
             await context.bot.send_message(chat_id=OWNER_USER_ID, text=gruppo_info)
-            logger.info(f"Informazioni inviate al proprietario: {OWNER_USER_ID}")
         except Exception as e:
             logger.error(f"Errore nell'invio del messaggio: {e}")
