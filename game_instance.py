@@ -7,9 +7,15 @@ import logging
 import json
 import os
 from telegram.constants import ParseMode
+from github import Github
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+REPO_NAME = "Lucaa220/Tombola"
+REMOTE_PATH = "classifiche.json"
 
 def load_classifica_from_json(filename):
     try:
@@ -28,6 +34,12 @@ def save_classifica_to_json(filename, all_scores):
     except Exception as e:
         logger.error(f"Errore durante il salvataggio delle classifiche nel file {filename}: {e}")
 
+    push_json_to_github(
+        local_json_path="classifiche.json",
+        commit_message="Aggiorno classifiche — " + datetime.utcnow().isoformat() + "Z"
+    )
+    
+
 def update_player_score(group_id: int, user_id: int, score: int) -> None:
     logger.info(f"Aggiornamento punteggio per gruppo {group_id}, utente {user_id}, punteggio {score}")
     classifica = load_classifica_from_json(group_id)
@@ -42,6 +54,30 @@ def update_player_score(group_id: int, user_id: int, score: int) -> None:
     save_classifica_to_json(group_id, classifica)
     logger.info(f"Punteggio aggiornato per l'utente {user_id} nel gruppo {group_id}: {score} punti")
 
+def push_json_to_github(local_json_path: str, commit_message: str = None):
+    with open(local_json_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    gh = Github(GITHUB_TOKEN)
+    repo = gh.get_repo(REPO_NAME)
+    
+    try:
+        contents = repo.get_contents(REMOTE_PATH)
+        sha = contents.sha
+    except Exception as e:
+        sha = None
+    
+    if not commit_message:
+        commit_message = f"Aggiorno stato bot — {datetime.utcnow().isoformat()}Z"
+    
+    repo.update_file(
+        path=REMOTE_PATH,
+        message=commit_message,
+        content=content,
+        sha=sha,
+        branch="main"  # o un’altra branch a tua scelta
+    )
+    print(f"✅ {REMOTE_PATH} aggiornato su GitHub")
 
 class TombolaGame:
     def __init__(self):
