@@ -34,6 +34,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 # Dizionario premi di default
 premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
 
+
+
 # Funzione per l'estrazione automatica
 async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
