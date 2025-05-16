@@ -375,41 +375,57 @@ async def end_game(update, context):
     game.reset_game()
     game.stop_game()
 
-async def send_final_rankings(update, context):
+import json
+import os
+
+async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, thread_id = get_chat_id_or_thread(update)
     sticker_file_id = "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
-    file_classifiche = "classifiche.json"
-    if not os.path.exists(file_classifiche):
-        await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+    file_classifiche = Path(__file__).parent / "classifiche.json"
+    if not file_classifiche.exists():
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="*📊 Nessuna classifica disponibile\.*",
+                                       message_thread_id=thread_id,
+                                       parse_mode=ParseMode.MARKDOWN_V2)
         return
-    with open(file_classifiche, "r", encoding="utf-8") as f:
-        classifiche = json.load(f)
+
+    try:
+        with open(file_classifiche, "r", encoding="utf-8") as f:
+            classifiche = json.load(f)
+    except Exception as e:
+        logger.error(f"Errore nella lettura delle classifiche finali: {e}")
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="⚠️ Errore nel leggere le classifiche finali.",
+                                       message_thread_id=thread_id)
+        return
+
     group_id = str(chat_id)
-    if group_id in classifiche:
+    if group_id in classifiche and classifiche[group_id]:
         classifica_gruppo = classifiche[group_id]
         classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
-        classifica_text = []
-        for posizione, (user_id, punteggio) in enumerate(classifica_ordinata):
-            if punteggio == 0:
+        lines = []
+        for pos, (user_id, punti) in enumerate(classifica_ordinata, start=1):
+            if punti <= 0:
                 continue
             try:
-                user_info = await context.bot.get_chat(user_id)
-                username_info = user_info.username or user_info.first_name
-            except Exception as e:
-                username_info = f"utente_{user_id}"
-            classifica_text.append(f"{posizione + 1}. @{username_info}: {punteggio} punti")
-        if classifica_text:
-            classifica_text = "\n".join(classifica_text)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🏆 Classifica:\n\n{classifica_text}",
-                message_thread_id=thread_id,
-            )
-            await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-        else:
-            await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+                user = await context.bot.get_chat(int(user_id))
+                nome = user.username or user.first_name
+            except Exception:
+                nome = f"utente_{user_id}"
+            lines.append(f"{pos}. @{nome}: {punti} punti")
+
+        text = "🏆 Classifica:\n\n" + "\n".join(lines)
+        await context.bot.send_message(chat_id=chat_id,
+                                       text=text,
+                                       message_thread_id=thread_id)
+        await context.bot.send_sticker(chat_id=chat_id,
+                                       sticker=sticker_file_id,
+                                       message_thread_id=thread_id)
     else:
-        await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="*📊 Nessuna classifica disponibile\.*",
+                                       message_thread_id=thread_id,
+                                       parse_mode=ParseMode.MARKDOWN_V2)
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -432,17 +448,19 @@ async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Solo gli amministratori possono resettare la classifica.")
         return
 
-    # Carica, resetta e salva+pusha
     file_classifiche = Path(__file__).parent / "classifiche.json"
     classifiche = {}
     if file_classifiche.exists():
-        classifiche = load_classifica_from_json(str(file_classifiche))
+        try:
+            with open(file_classifiche, 'r', encoding='utf-8') as f:
+                classifiche = json.load(f)
+        except Exception as e:
+            logger.error(f"Errore nel caricamento delle classifiche per reset: {e}")
 
     group_id = str(chat_id)
     if group_id in classifiche:
-        # reset dello specifico gruppo
         classifiche[group_id] = {}
-        # salva e automaticamente pusha su GitHub
+        # Salva e push su GitHub
         save_classifica_to_json(str(file_classifiche), classifiche)
         await update.message.reply_text(
             "_🚾 Complimenti hai scartato tutti i punteggi._",
