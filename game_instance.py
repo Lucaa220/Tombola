@@ -11,6 +11,7 @@ from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+CLASSIFICHE_FILE = "classifiche.json"
 
 def load_classifica_from_json(filename=CLASSIFICHE_FILE):
     try:
