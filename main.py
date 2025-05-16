@@ -1,15 +1,15 @@
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ChatMemberHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ChatMemberHandler
+from telegram.ext import ContextTypes
 import os
 import logging
 from telegram.constants import ParseMode
 import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
-import json
-import os.path
+from game_instance import get_game, load_classifica_from_json, save_classifica_to_json
 import sys
+from pathlib import Path
 
 load_dotenv()
 
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
-
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
@@ -38,12 +37,10 @@ premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombol
 async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
     mode = get_extraction_mode(chat_id)
-
     game = get_game(chat_id)
     if not game.game_active:  # Evita di estrarre se la partita non è attiva
         logger.warning(f"Tentativo di estrazione automatica in un gruppo senza partita attiva: {chat_id}")
         return
-
     if mode == 'auto':
         logger.info(f"Avvio estrazione automatica per chat {chat_id}.")
         await estrai(None, context)  # Chiama la funzione di estrazione senza controllare admin
@@ -56,14 +53,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.full_name
     chat_id = update.effective_chat.id
     logger.info(f"Il comando /impostami è stato usato da @{username} (ID: {user_id}).")
-
     message = update.message if update.message else update.callback_query.message
-
     if not await is_admin(update, context):
         await message.reply_text("🚫 Solo gli amministratori possono modificare le impostazioni.")
         return
-
-    # Tastiera con quattro pulsanti: Estrazione, Admin, Premi, Bonus/Malus, Chiudi
     keyboard = [
         [InlineKeyboardButton("🔁 Estrazione", callback_data='menu_estrazione'),
          InlineKeyboardButton("🛂 Admin", callback_data='menu_admin')],
@@ -72,8 +65,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Chiudi", callback_data='close_settings')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    text = "*📱 Benvenuto nel pannello di controllo\\!*\n\n_📲 Da dove vuoi iniziare la configurazione\\?_"
+    text = "*📱 Benvenuto nel pannello di controllo!*\n\n_📲 Da dove vuoi iniziare la configurazione?_"
     if update.callback_query:
         await message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
     else:
@@ -87,8 +79,7 @@ async def show_extraction_menu(query, chat_id, settings):
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Saggia scelta cominciare da qui, puoi decidere se rendere l'estrazione automatica, con un numero nuovo senza dover "
-            "premere nulla, oppure se proprio ti piace cliccare i bottoni, tenerla manuale\\:_")
+    text = ("_🆗 Saggia scelta: qui puoi decidere se rendere l'estrazione automatica o mantenerla manuale._")
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
 
 async def show_admin_menu(query, chat_id, settings):
@@ -99,17 +90,14 @@ async def show_admin_menu(query, chat_id, settings):
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Ah quindi vuoi permettere a tutti di poter toccare i comandi\\? E va bene, a tuo rischio e pericolo\\. Premi si se vuoi che "
-            "tutti, non solo gli admin, possano avviare, estrarre ed interrompere\\. Premi no se vuoi che il potere rimanga nelle mani di pochi\\:_")
+    text = ("_🆗 Vuoi permettere a tutti di usare i comandi o solo agli admin? Scegli con attenzione._")
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
 
 async def show_premi_menu(query, chat_id, settings):
     premi = settings.get(str(chat_id), {}).get("premi", premi_default)
     keyboard = []
     for premio, valore in premi.items():
-        keyboard.append([
-            InlineKeyboardButton(f"{premio.capitalize()}: {valore}💰", callback_data="none"),
-        ])
+        keyboard.append([InlineKeyboardButton(f"{premio.capitalize()}: {valore}💰", callback_data="none")])
         keyboard.append([
             InlineKeyboardButton("➖1", callback_data=f"set_premio_{premio}_-1"),
             InlineKeyboardButton("➕1", callback_data=f"set_premio_{premio}_+1"),
@@ -119,8 +107,7 @@ async def show_premi_menu(query, chat_id, settings):
     keyboard.append([InlineKeyboardButton("🔄 Reset Punti", callback_data="reset_premi")])
     keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Eccoci, dove avviene la magia, il cuore di tutto\\: *i punteggi*\\. Dai ad ogni premio il punteggio che ritieni corretto e "
-            "lascia che l'estrazione faccia il suo corso\\:_")
+    text = ("_🆗 Imposta i punteggi per i premi. Scegli i valori che ritieni opportuni._")
     try:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception as e:
@@ -128,15 +115,14 @@ async def show_premi_menu(query, chat_id, settings):
             raise e
 
 async def show_bonus_menu(query, chat_id, settings):
-    bonus_enabled = settings.get(str(chat_id), {}).get("bonus_malus", True)  # Default True se non presente
+    bonus_enabled = settings.get(str(chat_id), {}).get("bonus_malus", True)
     keyboard = [
         [InlineKeyboardButton(f"Attivo {'✅' if bonus_enabled else ''}", callback_data='set_bonus_on'),
          InlineKeyboardButton(f"Disattivo {'✅' if not bonus_enabled else ''}", callback_data='set_bonus_off')],
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Questo è il posto giusto se vuoi mettere un po' di pepe alle tue partite, attiva i bonus e i malus se vuoi che "
-            "la classifica sia un pochino più combattuta, se invece sei un tradizionalista, tieni l'opzione disattivata\\:_")
+    text = ("_🆗 Attiva o disattiva bonus/malus per modificare la classifica._")
     try:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception as e:
@@ -149,10 +135,8 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings = load_group_settings()
     if str(chat_id) not in settings:
         settings[str(chat_id)] = {}
-
     action = query.data
     logger.info(f"settings_button: {action}")
-
     if action == 'menu_estrazione':
         await show_extraction_menu(query, chat_id, settings)
     elif action == 'menu_admin':
@@ -234,46 +218,59 @@ async def numero_giocatori(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, thread_id = get_chat_id_or_thread(update)
-
     if not await is_admin(update, context):
         await update.message.reply_text("🚫 Solo gli amministratori possono vedere la classifica.")
         return
 
-    file_classifiche = os.path.join(os.path.dirname(__file__), "classifiche.json")
-    if not os.path.exists(file_classifiche):
-        await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile", message_thread_id=thread_id)
+    # Carica il JSON in sola lettura
+    file_classifiche = Path(__file__).parent / "classifiche.json"
+    if not file_classifiche.exists():
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="📊 Nessuna classifica disponibile",
+                                       message_thread_id=thread_id)
         return
 
     try:
-        with open(file_classifiche, "r", encoding="utf-8") as f:
-            classifiche = json.load(f)
-    except json.JSONDecodeError:
-        logger.error(f"Errore nella decodifica del file JSON delle classifiche.")
-        await context.bot.send_message(chat_id=chat_id, text="⚠️ Errore nel leggere il file della classifica.", message_thread_id=thread_id)
+        classifiche = load_classifica_from_json(str(file_classifiche))
+    except Exception:
+        logger.error("Errore nella decodifica del file JSON delle classifiche.")
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="⚠️ Errore nel leggere il file della classifica.",
+                                       message_thread_id=thread_id)
         return
 
     group_id = str(chat_id)
-    if group_id in classifiche:
-        classifica_gruppo = classifiche[group_id]
-        classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
-        classifica_text = []
-        for posizione, (user_id, punteggio) in enumerate(classifica_ordinata):
-            if punteggio == 0:
-                continue
-            try:
-                user_info = await context.bot.get_chat(user_id)
-                username = user_info.username or user_info.first_name
-            except Exception:
-                username = f"utente_{user_id}"
-            classifica_text.append(f"{posizione + 1}. @{username}: {punteggio} punti")
-        if classifica_text:
-            classifica_text = "\n".join(classifica_text)
-            await context.bot.send_message(chat_id=chat_id, text=f"🏆 Classifica:\n\n{classifica_text}", message_thread_id=thread_id)
-        else:
-            await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile.", message_thread_id=thread_id)
-    else:
-        await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile.", message_thread_id=thread_id)
+    if group_id not in classifiche or not classifiche[group_id]:
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="📊 Nessuna classifica disponibile.",
+                                       message_thread_id=thread_id)
+        return
 
+    # Ordina e costruisci il testo
+    classifica_ordinata = sorted(classifiche[group_id].items(),
+                                 key=lambda item: item[1],
+                                 reverse=True)
+    lines = []
+    for pos, (user_id, punti) in enumerate(classifica_ordinata, start=1):
+        if punti <= 0:
+            continue
+        try:
+            user = await context.bot.get_chat(int(user_id))
+            nome = user.username or user.first_name
+        except Exception:
+            nome = f"utente_{user_id}"
+        lines.append(f"{pos}. @{nome}: {punti} punti")
+
+    if not lines:
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="📊 Nessuna classifica disponibile.",
+                                       message_thread_id=thread_id)
+    else:
+        text = "🏆 Classifica:\n\n" + "\n".join(lines)
+        await context.bot.send_message(chat_id=chat_id,
+                                       text=text,
+                                       message_thread_id=thread_id)
+        
 async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     action = query.data
@@ -283,84 +280,96 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await button(update, context)
 
+# ------------------ WEBHOOK E HEALTH ------------------
+async def webhook_get(request):
+    return web.Response(text="Questo endpoint accetta solo POST per il webhook.")
+
 async def webhook_handler(request):
-    if request.method != 'POST':
-        return web.Response(text="Questo endpoint accetta solo POST per il webhook.", status=405)
-    response = web.Response(text="Bot Tombola2_Bot attivo!")
-    
-    update = None
+    # Aggiungi logging per verificare la ricezione dell'update
     try:
         update_data = await request.json()
+        logger.info("Aggiornamento ricevuto: %s", update_data)
         update = Update.de_json(update_data, application.bot)
+        logger.info("Update convertito, id: %s", update.update_id)
         asyncio.create_task(application.process_update(update))
+        logger.info("Chiamata a process_update eseguita")
     except Exception as e:
         logger.error("Errore nel webhook handler: %s", e)
-    return response
+    return web.Response(text="OK")
 
-# Health check handler (GET)
 async def health_check(request):
     try:
         me = await application.bot.get_me()
         return web.Response(text=f"Bot {me.username} attivo!")
     except Exception as e:
-        logger.error("Errore nel health check: %s", e)
+        logger.error(f"Errore nel health check: {e}")
         return web.Response(status=500, text="Bot non disponibile")
 
-# Configurazione dell'app web (aiohttp)
 async def setup_webapp():
     app = web.Application()
+    # Registra endpoint GET e POST per /webhook
+    app.router.add_get('/webhook', webhook_get)
     app.router.add_post('/webhook', webhook_handler)
     app.router.add_get('/health', health_check)
     app.router.add_get('/', health_check)
     return app
 
+async def self_ping():
+    while True:
+        try:
+            logger.info("Self-ping per mantenere il servizio attivo")
+            await asyncio.sleep(14 * 60)  # 14 minuti
+        except Exception as e:
+            logger.error(f"Errore nel self-ping: {e}")
+
 async def main():
     global application
     global TOKEN
-
     logger.info("Configurazione del bot...")
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://tombola-cmli.onrender.com/webhook').strip()
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://tuo-dominio/webhook')
     PORT = int(os.getenv('PORT', 10000))
-
+    
     # Creazione dell'applicazione
     application = Application.builder().token(TOKEN).build()
     
-    # Inizializzazione e avvio dell'applicazione (necessario per processare gli update)
+    # Inizializza e avvia l'applicazione
     await application.initialize()
     await application.start()
-
-    # Registrazione degli handler (assicurati che siano nell'ordine corretto)
+    
+    # Registrazione degli handler
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("trombola", start_game))
     application.add_handler(CommandHandler("estrai", estrai))
     application.add_handler(CommandHandler("stop", stop_game))
-    application.add_handler(CommandHandler("classifiga", classifica))  # Modifica se serve
+    application.add_handler(CommandHandler("classifiga", classifica))
     application.add_handler(CommandHandler("azzera", reset_classifica))
-    application.add_handler(CommandHandler("impostami", settings_command))  # Controlla le funzioni, se necessario
-    application.add_handler(CommandHandler("trombolatori", numero_giocatori))  # Aggiorna con la funzione corretta se diversa
+    application.add_handler(CommandHandler("impostami", settings_command))
+    application.add_handler(CommandHandler("trombolatori", numero_giocatori))
     application.add_handler(CommandHandler("trova", find_group))
     application.add_handler(CommandHandler("log", send_logs_by_group))
     application.add_handler(CommandHandler("regolo", regole))
     application.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
     application.add_handler(CallbackQueryHandler(combined_button_handler))
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
-
-    # Impostazione del webhook
+    
+    # Imposta il webhook
     await application.bot.set_webhook(url=WEBHOOK_URL)
     logger.info(f"Webhook impostato su {WEBHOOK_URL}")
-
-    # Configurazione e avvio del server web per gestire il webhook
+    
+    # Configura e avvia il server web
     app = await setup_webapp()
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     logger.info(f"Avvio del server web sulla porta {PORT}...")
     await site.start()
-
+    
     logger.info("Bot avviato con webhook, in attesa di richieste...")
-    while True:
-        await asyncio.sleep(3600)
+    
+    # Mantieni il processo attivo
+    await asyncio.gather(self_ping(), asyncio.sleep(3600*24*365))  # esempio per tenere il loop attivo
 
 if __name__ == '__main__':
     asyncio.run(main())
+
