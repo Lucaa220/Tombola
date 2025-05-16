@@ -97,7 +97,7 @@ def get_admin_limitation(chat_id):
         settings[str(chat_id)] = {'extraction_mode': 'manual', 'limita_admin': True}  # Impostazione predefinita: limita admin
         save_group_settings(settings)
     else:
-    
+        pass
     return settings[str(chat_id)].get('limita_admin', True)
 
 
