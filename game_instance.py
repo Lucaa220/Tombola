@@ -28,17 +28,22 @@ def load_classifica_from_json(filename):
 
 def save_classifica_to_json(filename, all_scores):
     try:
-        with open(filename, 'w') as json_file:
-            json.dump(all_scores, json_file, indent=4)
+        with open(filename, 'w', encoding='utf-8') as json_file:
+            json.dump(all_scores, json_file, ensure_ascii=False, indent=4)
         logger.info(f"Classifiche salvate correttamente nel file {filename}.")
     except Exception as e:
         logger.error(f"Errore durante il salvataggio delle classifiche nel file {filename}: {e}")
+        return
 
-    push_json_to_github(
-        local_json_path="classifiche.json",
-        commit_message="Aggiorno classifiche — " + datetime.utcnow().isoformat() + "Z"
-    )
-    
+    # Push su GitHub
+    try:
+        push_json_to_github(
+            local_json_path=filename,
+            commit_message="Aggiorno classifiche — " + datetime.utcnow().isoformat() + "Z"
+        )
+        logger.info("✅ Classifiche aggiornate anche su GitHub.")
+    except Exception as e:
+        logger.error(f"Errore nel push su GitHub: {e}")
 
 def update_player_score(group_id: int, user_id: int, score: int) -> None:
     logger.info(f"Aggiornamento punteggio per gruppo {group_id}, utente {user_id}, punteggio {score}")
