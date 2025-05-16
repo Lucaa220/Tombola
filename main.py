@@ -237,41 +237,18 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Solo gli amministratori possono vedere la classifica.")
         return
 
-    file_classifiche = Path(__file__).parent / "classifiche.json"
-    if not file_classifiche.exists():
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="📊 Nessuna classifica disponibile",
-                                       message_thread_id=thread_id)
+    file_classifiche = "classifiche.json"
+    if not os.path.exists(file_classifiche):
+        await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile", message_thread_id=thread_id)
         return
 
     try:
         with open(file_classifiche, "r", encoding="utf-8") as f:
             classifiche = json.load(f)
     except json.JSONDecodeError:
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="⚠️ Errore nel leggere il file della classifica.",
-                                       message_thread_id=thread_id)
+        logger.error(f"Errore nella decodifica del file JSON delle classifiche.")
+        await context.bot.send_message(chat_id=chat_id, text="⚠️ Errore nel leggere il file della classifica.", message_thread_id=thread_id)
         return
-
-    group_id = str(chat_id)
-    if group_id in classifiche and classifiche[group_id]:
-        classifica_gruppo = classifiche[group_id]
-        classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
-        lines = []
-        for pos, (user_id, punti) in enumerate(classifica_ordinata, start=1):
-            if punti <= 0:
-                continue
-            try:
-                user = await context.bot.get_chat(int(user_id))
-                nome = user.username or user.first_name
-            except Exception:
-                nome = f"utente_{user_id}"
-            lines.append(f"{pos}. @{nome}: {punti} punti")
-
-        text = "🏆 Classifica:\n\n" + "\n".join(lines)
-        await context.bot.send_message(chat_id=chat_id,
-                                       text=text,
-                                       message_thread_id=thread_id)
 
     group_id = str(chat_id)
     if group_id in classifiche:
