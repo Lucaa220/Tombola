@@ -5,8 +5,9 @@ import json
 import os
 from telegram.constants import ParseMode
 from pathlib import Path
-from game_instance import push_json_to_github
 from datetime import datetime
+from github import Github
+
 # Impostazioni logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,6 +18,34 @@ thread_id_global = None
 SETTINGS_FILE = Path(__file__).parent / "group_settings.json"
 OWNER_USER_ID = "547260823"
 
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+REPO_NAME = "Lucaa220/Tombola"
+REMOTE_PATH = "classifiche.json"
+
+def push_json_to_github(local_json_path: str, commit_message: str = None):
+    with open(local_json_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    gh = Github(GITHUB_TOKEN)
+    repo = gh.get_repo(REPO_NAME)
+    
+    try:
+        contents = repo.get_contents(REMOTE_PATH)
+        sha = contents.sha
+    except Exception as e:
+        sha = None
+    
+    if not commit_message:
+        commit_message = f"Aggiorno stato bot — {datetime.utcnow().isoformat()}Z"
+    
+    repo.update_file(
+        path=REMOTE_PATH,
+        message=commit_message,
+        content=content,
+        sha=sha,
+        branch="main"  # o un’altra branch a tua scelta
+    )
+    print(f"✅ {REMOTE_PATH} aggiornato su GitHub")
 
 def load_group_settings():
     if not SETTINGS_FILE.exists():
