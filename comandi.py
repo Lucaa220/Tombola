@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from game_instance import get_game, load_classifica_from_json
+from game_instance import get_game, load_classifica_from_json, save_classifica_to_json
 from variabili import get_chat_id_or_thread, is_admin, load_group_settings
 import asyncio
 import json
@@ -9,6 +9,7 @@ import os
 from log import log_interaction
 from telegram.helpers import escape_markdown
 from asyncio.log import logger
+from pathlib import Path
 
 def print_classifiche_file_content() -> None:
     file_name = "classifiche.json"
@@ -102,7 +103,6 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    logger.info("Ricevuto comando /start da %s", update.effective_user.username)
     if context.args:
         command_argument = context.args[0]
         if command_argument.startswith("join_game_"):
@@ -431,20 +431,25 @@ async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         await update.message.reply_text("🚫 Solo gli amministratori possono resettare la classifica.")
         return
+
+    # Carica, resetta e salva+pusha
+    file_classifiche = Path(__file__).parent / "classifiche.json"
+    classifiche = {}
+    if file_classifiche.exists():
+        classifiche = load_classifica_from_json(str(file_classifiche))
+
     group_id = str(chat_id)
-    file_classifiche = "classifiche.json"
-    if os.path.exists(file_classifiche):
-        with open(file_classifiche, 'r', encoding='utf-8') as f:
-            classifiche = json.load(f)
-        if group_id in classifiche:
-            classifiche[group_id] = {}
-            with open(file_classifiche, 'w', encoding='utf-8') as f:
-                json.dump(classifiche, f, ensure_ascii=False, indent=4)
-            await update.message.reply_text("_🚾 Complimenti hai scartato tutti i punteggi\\._", parse_mode=ParseMode.MARKDOWN_V2)
-        else:
-            await update.message.reply_text("⚠️ Nessuna classifica trovata per il gruppo corrente.")
+    if group_id in classifiche:
+        # reset dello specifico gruppo
+        classifiche[group_id] = {}
+        # salva e automaticamente pusha su GitHub
+        save_classifica_to_json(str(file_classifiche), classifiche)
+        await update.message.reply_text(
+            "_🚾 Complimenti hai scartato tutti i punteggi._",
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
     else:
-        await update.message.reply_text("⚠️ Il file delle classifiche non esiste.")
+        await update.message.reply_text("⚠️ Nessuna classifica trovata per il gruppo corrente.")
 
 async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
