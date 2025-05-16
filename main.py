@@ -98,8 +98,8 @@ async def show_admin_menu(query, chat_id, settings):
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Ah quindi vuoi permettere a tutti di poter toccare i comandi\\? E va bene, a tuo rischio e pericolo\\. Premi si se vuoi che "
-            "tutti, non solo gli admin, possano avviare, estrarre ed interrompere\\. Premi no se vuoi che il potere rimanga nelle mani di pochi\\:_")
+    text = ("_🆗 Ah quindi vuoi permettere a tutti di poter toccare i comandi\\? E va bene, a tuo rischio e pericolo\\. Premi no se vuoi che "
+            "tutti, non solo gli admin, possano avviare, estrarre ed interrompere\\. Premi si se vuoi che il potere rimanga nelle mani di pochi\\:_")
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
 
 async def show_premi_menu(query, chat_id, settings):
