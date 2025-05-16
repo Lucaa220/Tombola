@@ -17,7 +17,6 @@ def print_classifiche_file_content() -> None:
         try:
             with open(file_name, 'r') as json_file:
                 content = json.load(json_file)
-            logger.info(f"Contenuto del file {file_name}:\n{json.dumps(content, indent=2)}")
         except Exception as e:
             logger.error(f"Errore durante la lettura del file {file_name}: {e}")
     else:
@@ -28,14 +27,12 @@ def check_file_permissions() -> None:
     file_name = "classifiche.json"
     if os.path.exists(file_name):
         if os.access(file_name, os.W_OK):
-            logger.info(f"Il file {file_name} ha permessi di scrittura.")
         else:
             logger.error(f"Il file {file_name} non ha permessi di scrittura!")
     else:
         try:
             with open(file_name, 'w') as f:
                 json.dump({}, f)
-            logger.info(f"Creato nuovo file {file_name} con permessi di scrittura.")
         except Exception as e:
             logger.error(f"Impossibile creare il file {file_name}. Errore: {e}")
 
@@ -56,11 +53,9 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game.overall_scores = load_classifica_from_json(chat_id)
 
     group_settings = load_group_settings()
-    logger.info(f"Impostazioni di gruppo caricate: {group_settings}")
     custom_scores = group_settings.get(str(chat_id), {}).get("premi")
     if custom_scores:
         game.custom_scores = custom_scores
-        logger.info(f"Punteggi personalizzati caricati per il gruppo {chat_id}: {custom_scores}")
     else:
         game.custom_scores = {
             "ambo": 5,
@@ -69,7 +64,6 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cinquina": 20,
             "tombola": 50
         }
-        logger.info(f"Uso punteggi di default per il gruppo {chat_id}")
 
     # Recupera (se disponibile) il link del gruppo
     if update.message.chat.username:
@@ -308,7 +302,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         number = await game.draw_number(context)
         # Se bonus/malus sono disattivati, ignora i numeri 104 e 666
         while number is not None and (not bonus_malus_enabled) and (number in [104, 666]):
-            logger.info(f"Numero bonus {number} estratto, ma i bonus/malus sono disabilitati. Scarto il numero e ne estraggo un altro.")
             number = await game.draw_number(context)
 
         if number:
