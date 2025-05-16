@@ -43,14 +43,11 @@ async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
 
     game = get_game(chat_id)
     if not game.game_active:  # Evita di estrarre se la partita non è attiva
-        logger.warning(f"Tentativo di estrazione automatica in un gruppo senza partita attiva: {chat_id}")
         return
 
     if mode == 'auto':
-        logger.info(f"Avvio estrazione automatica per chat {chat_id}.")
         await estrai(None, context)  # Chiama la funzione di estrazione senza controllare admin
     else:
-        logger.info(f"Estratto numero in modalità manuale per chat {chat_id}, modalità attuale: {mode}.")
 
 # Comando impostazioni con menu a bottoni
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,7 +150,6 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings[str(chat_id)] = {}
 
     action = query.data
-    logger.info(f"settings_button: {action}")
 
     if action == 'menu_estrazione':
         await show_extraction_menu(query, chat_id, settings)
@@ -207,7 +203,6 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
             await query.answer()
         except Exception as e:
-            logger.error(f"Errore eliminazione messaggio: {e}")
             await query.answer("Errore nel chiudere il menu.")
     else:
         await query.answer()
@@ -253,7 +248,6 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(file_classifiche, "r", encoding="utf-8") as f:
             classifiche = json.load(f)
     except json.JSONDecodeError:
-        logger.error(f"Errore nella decodifica del file JSON delle classifiche.")
         await context.bot.send_message(chat_id=chat_id,
                                        text="⚠️ Errore nel leggere il file della classifica.",
                                        message_thread_id=thread_id)
@@ -277,10 +271,6 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "🏆 Classifica:\n\n" + "\n".join(lines)
         await context.bot.send_message(chat_id=chat_id,
                                        text=text,
-                                       message_thread_id=thread_id)
-    else:
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="📊 Nessuna classifica disponibile.",
                                        message_thread_id=thread_id)
 
     group_id = str(chat_id)
@@ -308,7 +298,6 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     action = query.data
-    logger.info(f"Callback data ricevuto: {action}")
     if action.startswith('set_') or action in ['menu_estrazione', 'menu_admin', 'menu_premi', 'menu_bonus', 'back_to_main_menu', 'close_settings', 'reset_premi']:
         await settings_button(update, context)
     else:
@@ -322,11 +311,8 @@ async def webhook_handler(request):
     # Aggiungi logging per verificare la ricezione dell'update
     try:
         update_data = await request.json()
-        logger.info("Aggiornamento ricevuto: %s", update_data)
         update = Update.de_json(update_data, application.bot)
-        logger.info("Update convertito, id: %s", update.update_id)
         asyncio.create_task(application.process_update(update))
-        logger.info("Chiamata a process_update eseguita")
     except Exception as e:
         logger.error("Errore nel webhook handler: %s", e)
     return web.Response(text="OK")
@@ -351,7 +337,6 @@ async def setup_webapp():
 async def self_ping():
     while True:
         try:
-            logger.info("Self-ping per mantenere il servizio attivo")
             await asyncio.sleep(14 * 60)  # 14 minuti
         except Exception as e:
             logger.error(f"Errore nel self-ping: {e}")
