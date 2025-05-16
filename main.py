@@ -48,7 +48,7 @@ async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
     if mode == 'auto':
         await estrai(None, context)  # Chiama la funzione di estrazione senza controllare admin
     else:
-
+        pass
 # Comando impostazioni con menu a bottoni
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
