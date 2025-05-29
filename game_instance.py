@@ -2,68 +2,77 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
-from variabili import chat_id_global, thread_id_global, push_json_to_github
+from variabili import chat_id_global, thread_id_global, JSONBIN_API_KEY
 import logging
 import json
 import os
 from telegram.constants import ParseMode
-from datetime import datetime
+import requests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-CLASSIFICHE_FILE = "classifiche.json"
 
-def load_classifica_from_json(filename=CLASSIFICHE_FILE):
+def load_classifica_from_json(group_id: int):
+    # Il bin ID è ora una costante, non viene passato come argomento
+    CLASSIFICHE_BIN_ID = "6657963fe41b4d34e4029267" # Il tuo Bin ID per classifiche.json
+    headers = {
+        "X-Master-Key": JSONBIN_API_KEY,
+        "Content-Type": "application/json"
+    }
+    url = f"https://api.jsonbin.io/v3/b/{CLASSIFICHE_BIN_ID}/latest"
     try:
-        with open(filename, 'r', encoding='utf-8') as json_file:
-            return json.load(json_file)
-    except Exception as e:
-        logger.error(f"Errore durante il caricamento della classifica dal file {filename}: {e}")
-        return {}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        all_scores = response.json()
+        return all_scores.get(str(group_id), {}) # Restituisce solo i punteggi per il gruppo specifico
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Errore durante il caricamento della classifica da JSONBin.io: {e}")
+        return {} # Restituisce un dizionario vuoto in caso di errore
 
+# Modificato: per salvare su JSONBin.io
+def save_classifica_to_json(group_id: int, scores: dict):
+    # Il bin ID è ora una costante, non viene passato come argomento
+    CLASSIFICHE_BIN_ID = "6657963fe41b4d34e4029267" # Il tuo Bin ID per classifiche.json
+    headers = {
+        "X-Master-Key": JSONBIN_API_KEY,
+        "Content-Type": "application/json"
+    }
+    url = f"https://api.jsonbin.io/v3/b/{CLASSIFICHE_BIN_ID}"
 
-def save_classifica_to_json(all_scores, filename=CLASSIFICHE_FILE):
+    # Carica tutte le classifiche esistenti per aggiornare solo quella specifica
     try:
-        with open(filename, 'w', encoding='utf-8') as json_file:
-            json.dump(all_scores, json_file, ensure_ascii=False, indent=4)
-        logger.info(f"Classifiche salvate correttamente nel file {filename}.")
-    except Exception as e:
-        logger.error(f"Errore durante il salvataggio delle classifiche nel file {filename}: {e}")
-        return
+        response = requests.get(f"{url}/latest", headers=headers)
+        response.raise_for_status()
+        all_scores = response.json()
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Impossibile caricare le classifiche esistenti da JSONBin.io, inizializzazione: {e}")
+        all_scores = {} # Inizializza se non ci sono classifiche o c'è un errore
 
-    # Push su GitHub
+    all_scores[str(group_id)] = scores # Aggiorna i punteggi per il gruppo specifico
+
     try:
-        push_json_to_github(
-            local_json_path=filename,
-            commit_message=f"Aggiorno classifiche — {datetime.utcnow().isoformat()}Z"
-        )
-        logger.info("✅ Classifiche aggiornate anche su GitHub.")
-    except Exception as e:
-        logger.error(f"Errore nel push su GitHub: {e}")
-
+        response = requests.put(url, headers=headers, json=all_scores)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Errore durante il salvataggio delle classifiche su JSONBin.io: {e}")
 
 def update_player_score(group_id: int, user_id: int, score: int) -> None:
-    # Carica tutte le classifiche
-    all_scores = load_classifica_from_json()
+    classifica = load_classifica_from_json(group_id)
 
-    key = str(group_id)
-    if key not in all_scores:
-        all_scores[key] = {}
-
-    if str(user_id) in all_scores[key]:
-        all_scores[key][str(user_id)] += score
+    if str(user_id) in classifica:
+        classifica[str(user_id)] += score
     else:
-        all_scores[key][str(user_id)] = score
+        classifica[str(user_id)] = score
 
-    # Salva e push su GitHub
-    save_classifica_to_json(all_scores)
+    save_classifica_to_json(group_id, classifica)
+
 
 class TombolaGame:
     def __init__(self):
         self.players = {}  # Giocatori e le loro cartelle
         self.numeri_estratti = []  # Numeri già estratti
-        # Include numeri da 1 a 90, bonus 104 e malus 666
-        self.numeri_tombola = list(range(1, 91)) + [104, 666]
+        # Include numeri da 1 a 90, bonus 110 e malus 666
+        self.numeri_tombola = list(range(1, 91)) + [110, 666]
         random.shuffle(self.numeri_tombola)  # Mischia i numeri
         self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None, 'tombola': None}  # Per tracciare le vittorie
         self.game_active = True  # Stato del gioco
@@ -114,11 +123,11 @@ class TombolaGame:
         group_settings = load_group_settings()
         bonus_malus_enabled = group_settings.get(str(self.chat_id), {}).get("bonus_malus", True)
 
-        # Se i bonus/malus sono disattivati, ignoriamo i numeri 104 e 666
+        # Se i bonus/malus sono disattivati, ignoriamo i numeri 110 e 666
         number = None
         while self.numeri_tombola and self.game_active:
             potential = self.numeri_tombola.pop(0)
-            if not bonus_malus_enabled and potential in [104, 666]:
+            if not bonus_malus_enabled and potential in [110, 666]:
                 continue
             number = potential
             break
@@ -126,7 +135,7 @@ class TombolaGame:
         if number is not None:
             self.numeri_estratti.append(number)
             # Gestione bonus e malus: questi blocchi verranno eseguiti solo se i bonus/malus sono abilitati
-            if number == 104 and bonus_malus_enabled:
+            if number == 110 and bonus_malus_enabled:
                 if self.players_in_game:
                     random_player = random.choice(list(self.players_in_game))
                     bonus_points = random.randint(1, 49)
@@ -139,12 +148,12 @@ class TombolaGame:
                             username = str(random_player)
                         await context.bot.send_message(
                             chat_id=self.chat_id,
-                            text=f"*♿️ Numero 104 estratto\\!*\n\n_🆒 @{username} ha guadagnato {bonus_points} punti_",
+                            text=f"*🧑‍🎓 Numero 110 estratto\\!*\n\n_🆒 @{username} ha guadagnato {bonus_points} punti_",
                             message_thread_id=self.thread_id,
                             parse_mode=ParseMode.MARKDOWN_V2
                         )
                 else:
-                    logger.warning("Numero 104 estratto ma non ci sono giocatori in partita.")
+                    logger.warning("Numero 110 estratto ma non ci sono giocatori in partita.")
             elif number == 666 and bonus_malus_enabled:
                 if self.players_in_game:
                     random_player = random.choice(list(self.players_in_game))
@@ -271,7 +280,6 @@ class TombolaGame:
 
             with open(filename, 'w') as file:
                 json.dump(all_scores, file, indent=4)
-            logger.info(f"Punteggi salvati correttamente per il gruppo {self.chat_id}")
         except Exception as e:
             logger.error(f"Errore durante il salvataggio dei punteggi: {e}")
 
@@ -297,7 +305,7 @@ class TombolaGame:
         saved_overall_scores = self.overall_scores.copy()
         self.players = {}
         self.numeri_estratti = []
-        self.numeri_tombola = list(range(1, 91)) + [104, 666]
+        self.numeri_tombola = list(range(1, 91)) + [110, 666]
         random.shuffle(self.numeri_tombola)
         self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None, 'tombola': None}
         self.game_active = True
