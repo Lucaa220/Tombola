@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from game_instance import get_game, load_classifica_from_json, save_classifica_to_json
+from game_instance import get_game, load_classifica_from_json
 from variabili import get_chat_id_or_thread, is_admin, load_group_settings
 import asyncio
 import json
@@ -9,34 +9,6 @@ import os
 from log import log_interaction
 from telegram.helpers import escape_markdown
 from asyncio.log import logger
-from pathlib import Path
-
-def print_classifiche_file_content() -> None:
-    file_name = "classifiche.json"
-    if os.path.exists(file_name):
-        try:
-            with open(file_name, 'r') as json_file:
-                content = json.load(json_file)
-        except Exception as e:
-            logger.error(f"Errore durante la lettura del file {file_name}: {e}")
-    else:
-        logger.warning(f"Il file {file_name} non esiste.")
-
-# Funzione di utilità per verificare i permessi di scrittura
-def check_file_permissions() -> None:
-    file_name = "classifiche.json"
-    if os.path.exists(file_name):
-        if os.access(file_name, os.W_OK):
-            logger.info(f"Il file {file_name} ha permessi di scrittura.")
-        else:
-            logger.error(f"Il file {file_name} non ha permessi di scrittura!")
-    else:
-        try:
-            with open(file_name, 'w') as f:
-                json.dump({}, f)
-            logger.info(f"Creato nuovo file {file_name} con permessi di scrittura.")
-        except Exception as e:
-            logger.error(f"Impossibile creare il file {file_name}. Errore: {e}")
 
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -133,6 +105,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             else:
                 if game.add_player(user_id):
+                    if update.effective_user.username:
+                       game.usernames[user_id] = update.effective_user.username
+                    else:
+                      game.usernames[user_id] = update.effective_user.full_name
+
                     cartella = game.players[user_id]
                     formatted_cartella = game.format_cartella(cartella)
                     await context.bot.send_message(
@@ -144,7 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await update.message.reply_text("🔜 Non puoi unirti alla partita ora.")
             return
-        
+
     group_link = "https://t.me/monopolygoscambioitailtopcontest"
     nickname = update.effective_user.full_name or update.effective_user.username
     escaped_nickname = escape_markdown(nickname, version=2)
@@ -161,69 +138,99 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.full_name
+    user = update.effective_user
+    user_id = user.id
+    username = user.username or user.full_name
+
     group_chat_id = query.message.chat.id
     thread_id = getattr(query.message, "message_thread_id", None)
     group_name = query.message.chat.title or "Gruppo Sconosciuto"
     escaped_group_name = escape_markdown(group_name, version=2)
 
-    # Ottieni il link del gruppo
     try:
         chat = await context.bot.get_chat(group_chat_id)
         if chat.username:
             group_link = f"https://t.me/{chat.username}"
         else:
             group_link = await context.bot.export_chat_invite_link(group_chat_id)
-    except Exception as e:
+    except Exception:
         group_link = None
-    group_text = f"[{escaped_group_name}]({group_link})" if group_link else group_name
 
+    group_text = f"[{escaped_group_name}]({group_link})" if group_link else escaped_group_name
+
+    # Log dell'interazione
     log_interaction(user_id, username, group_chat_id, query.data, group_name)
 
     if query.data == 'join_game':
         game = get_game(group_chat_id)
+
+        # Verifica stato della partita
         if not game.game_active:
-            await query.answer("🚫 Non ci sono partite in corso. Aspetta che ne inizi una nuova per poterti unire!")
+            await query.answer(
+                "🚫 Non ci sono partite in corso. Aspetta che ne inizi una nuova per poterti unire!",
+                show_alert=True
+            )
             return
         if game.extraction_started:
-            await query.answer("🚫 La partita è già iniziata, non puoi unirti ora. Aspetta la prossima partita!")
+            await query.answer(
+                "🚫 La partita è già iniziata, non puoi unirti ora. Aspetta la prossima partita!",
+                show_alert=True
+            )
             return
 
+        # Controlla se l'utente è già iscritto
         if game.players.get(user_id):
-            await query.answer("Sei già iscritto alla partita!")
+            await query.answer("Sei già iscritto alla partita!", show_alert=True)
             return
-        else:
-            game.add_player(user_id)
-            cartella = game.players[user_id]
-            formatted_cartella = game.format_cartella(cartella)
-            escaped_username = escape_markdown(username, version=2)
-            await context.bot.send_message(
-                chat_id=group_chat_id,
-                text=f"_*👤 @{escaped_username} si è unito alla partita\\!*_",
-                message_thread_id=thread_id,
-                parse_mode=ParseMode.MARKDOWN_V2
+
+        # Registra username
+        game.usernames[user_id] = user.username or user.full_name
+
+        # Aggiungi giocatore e invia cartella
+        game.add_player(user_id)
+        cartella = game.players[user_id]
+        formatted_cartella = game.format_cartella(cartella)
+        escaped_cartella = escape_markdown(formatted_cartella, version=2)
+        escaped_username = escape_markdown(username, version=2)
+
+        # Annuncio nel gruppo/thread con MarkdownV2
+        await context.bot.send_message(
+            chat_id=group_chat_id,
+            text=f"*_👤 @{escaped_username} si è unito alla partita\\!_*",
+            message_thread_id=thread_id,
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
+
+        # Invio cartella in privato con MarkdownV2
+        try:
+            private_text = (
+                f"*🏁 Sei ufficialmente nella partita del gruppo {group_text}, ecco la tua cartella\\:*"
+                f"\n\n{escaped_cartella}"
             )
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"*🏁 Sei ufficialmente nella partita del gruppo {group_text}, ecco la tua cartella\\:*\n\n{formatted_cartella}",
-                    parse_mode=ParseMode.MARKDOWN_V2,
-                    disable_web_page_preview=True
-                )
-            except Exception as e:
-                await query.answer("Non riesco a inviarti la cartella in privato. Assicurati di aver avviato una chat con me.", show_alert=True)
-                return
-            await query.answer("Cartella inviata in privato!")
-    
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=private_text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                disable_web_page_preview=True
+            )
+        except Exception:
+            await query.answer(
+                "Non riesco a inviarti la cartella in privato. Assicurati di aver avviato una chat con me.",
+                show_alert=True
+            )
+            return
+
+        # Conferma per l'utente nel contesto del callback
+        await query.answer("Cartella inviata in privato!")
+
     elif query.data == 'draw_number':
         await estrai(update, context)
         await query.answer("Numero estratto!")
-        
+
     elif query.data == 'stop_game':
         await stop_game(update, context)
         await query.answer("Partita interrotta!")
-        
+
     elif query.data == 'mostra_cartella':
         game = get_game(group_chat_id)
         if user_id not in game.players:
@@ -269,6 +276,23 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     async def update_player(user_id, number, update, context):
+        name_for_logic_and_display = game.usernames.get(user_id) # user_id è la chiave (int)
+        if not name_for_logic_and_display: # Fallback: se non è in cache, recuperalo e memorizzalo
+            try:
+                chat_member_info = await context.bot.get_chat_member(chat_id, user_id) # chat_id del gruppo
+                if chat_member_info.user.username:
+                    name_for_logic_and_display = chat_member_info.user.username
+                else:
+                    name_for_logic_and_display = chat_member_info.user.full_name
+
+                if not name_for_logic_and_display: # Estremo fallback
+                    name_for_logic_and_display = f"Utente_{user_id}"
+
+                game.usernames[user_id] = name_for_logic_and_display # Memorizza per usi futuri
+            except Exception as e:
+                logger.error(f"Errore nel recuperare/memorizzare il nome utente per {user_id} in update_player (gruppo {chat_id}): {e}")
+                name_for_logic_and_display = f"Utente_{user_id}" # Fallback finale
+
         cartella = game.players[user_id]
         updated = game.update_cartella(user_id, number)
         if updated:
@@ -302,8 +326,8 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async def extract_and_update():
         number = await game.draw_number(context)
-        # Se bonus/malus sono disattivati, ignora i numeri 104 e 666
-        while number is not None and (not bonus_malus_enabled) and (number in [104, 666]):
+        # Se bonus/malus sono disattivati, ignora i numeri 110 e 666
+        while number is not None and (not bonus_malus_enabled) and (number in [110, 666]):
             number = await game.draw_number(context)
 
         if number:
@@ -321,8 +345,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif number == 90:
                 sticker_file_id = "CAACAgEAAxkBAAEt32Vm8Z_GSXsHJiUjkcuuFKbOn6-C5QAC5gUAAknjsAjqSIl2V50ugDYE"
                 await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-            elif number == 104:
-                # Con bonus/malus attivati verrà inviato lo sticker (ma qui, bonus_malus_enabled è True)
+            elif number == 110:
                 sticker_file_id = "CAACAgQAAxkBAAExyBZnsMNjcmrjrNQpNTTiJDhIuaqLEAACLhcAAsNrSVEvCd8T5g72HDYE"
                 await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
             elif number == 666:
@@ -373,65 +396,41 @@ async def end_game(update, context):
 import json
 import os
 
-async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_final_rankings(update, context):
     chat_id, thread_id = get_chat_id_or_thread(update)
     sticker_file_id = "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
-    file_classifiche = Path(__file__).parent / "classifiche.json"
-
-    if not file_classifiche.exists():
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="*📊 Nessuna classifica disponibile\\.*",
-                                       message_thread_id=thread_id,
-                                       parse_mode=ParseMode.MARKDOWN_V2)
+    file_classifiche = "classifiche.json"
+    if not os.path.exists(file_classifiche):
+        await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
         return
-
-    try:
-        with open(file_classifiche, "r", encoding="utf-8") as f:
-            classifiche = json.load(f)
-    except Exception as e:
-        logger.error(f"Errore nella lettura delle classifiche finali: {e}")
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="⚠️ Errore nel leggere le classifiche finali.",
-                                       message_thread_id=thread_id)
-        return
-
+    with open(file_classifiche, "r", encoding="utf-8") as f:
+        classifiche = json.load(f)
     group_id = str(chat_id)
-    if group_id in classifiche and classifiche[group_id]:
+    if group_id in classifiche:
         classifica_gruppo = classifiche[group_id]
         classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
-        lines = []
-
-        for pos, (user_id, punti) in enumerate(classifica_ordinata, start=1):
-            if punti <= 0:
+        classifica_text = []
+        for posizione, (user_id, punteggio) in enumerate(classifica_ordinata):
+            if punteggio == 0:
                 continue
             try:
-                user = await context.bot.get_chat(int(user_id))
-                nome = user.username or user.first_name
-            except Exception:
-                nome = f"utente_{user_id}"
-            lines.append(f"{pos}. @{nome}: {punti} punti")
-
-        text = "🏆 Classifica:\n\n" + "\n".join(lines)
-        await context.bot.send_message(chat_id=chat_id, text=text, message_thread_id=thread_id)
-        await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-
-        # 🔄 Salva di nuovo e push su GitHub
-        try:
-            with open(file_classifiche, "w", encoding="utf-8") as f:
-                json.dump(classifiche, f, ensure_ascii=False, indent=4)
-
-            push_json_to_github(
-                local_json_path=str(file_classifiche),
-                commit_message=f"Aggiornamento classifica gruppo {group_id} — {datetime.utcnow().isoformat()}Z"
+                user_info = await context.bot.get_chat(user_id)
+                username_info = user_info.username or user_info.first_name
+            except Exception as e:
+                username_info = f"utente_{user_id}"
+            classifica_text.append(f"{posizione + 1}. @{username_info}: {punteggio} punti")
+        if classifica_text:
+            classifica_text = "\n".join(classifica_text)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🏆 Classifica:\n\n{classifica_text}",
+                message_thread_id=thread_id,
             )
-            logger.info("✅ Classifica aggiornata su GitHub.")
-        except Exception as e:
-            logger.error(f"Errore nel salvataggio o push della classifica finale: {e}")
+            await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
     else:
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="*📊 Nessuna classifica disponibile\\.*",
-                                       message_thread_id=thread_id,
-                                       parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -453,53 +452,20 @@ async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         await update.message.reply_text("🚫 Solo gli amministratori possono resettare la classifica.")
         return
-
-    # Percorso al file locale
-    file_classifiche = Path(__file__).parent / "classifiche.json"
-    classifiche = {}
-
-    # Carica esistente, se presente
-    if file_classifiche.exists():
-        try:
-            with open(file_classifiche, 'r', encoding='utf-8') as f:
-                classifiche = json.load(f)
-        except Exception as e:
-            logger.error(f"Errore nel caricamento delle classifiche per reset: {e}")
-
     group_id = str(chat_id)
-    if group_id in classifiche:
-        # 1) Reset del solo gruppo
-        classifiche[group_id] = {}
-
-        # 2) Salvataggio locale
-        try:
+    file_classifiche = "classifiche.json"
+    if os.path.exists(file_classifiche):
+        with open(file_classifiche, 'r', encoding='utf-8') as f:
+            classifiche = json.load(f)
+        if group_id in classifiche:
+            classifiche[group_id] = {}
             with open(file_classifiche, 'w', encoding='utf-8') as f:
                 json.dump(classifiche, f, ensure_ascii=False, indent=4)
-            logger.info(f"Classifiche resettate localmente per il gruppo {group_id}.")
-        except Exception as e:
-            logger.error(f"Errore nel salvataggio locale delle classifiche: {e}")
-            await update.message.reply_text("⚠️ Errore nel salvataggio della classifica.")
-            return
-
-        # 3) Push su GitHub
-        try:
-            push_json_to_github(
-                local_json_path=str(file_classifiche),
-                commit_message=f"Reset classifica gruppo {group_id} — {datetime.utcnow().isoformat()}Z"
-            )
-            logger.info("✅ Classifiche resettate anche su GitHub.")
-        except Exception as e:
-            logger.error(f"Errore nel push su GitHub: {e}")
-            await update.message.reply_text("⚠️ Errore durante l'aggiornamento su GitHub.")
-            return
-
-        # 4) Conferma all’utente
-        await update.message.reply_text(
-            "_🚾 Complimenti hai scartato tutti i punteggi per questo gruppo!_",
-            parse_mode=ParseMode.MARKDOWN_V2
-        )
+            await update.message.reply_text("_🚾 Complimenti hai scartato tutti i punteggi\\._", parse_mode=ParseMode.MARKDOWN_V2)
+        else:
+            await update.message.reply_text("⚠️ Nessuna classifica trovata per il gruppo corrente.")
     else:
-        await update.message.reply_text("⚠️ Nessuna classifica trovata per il gruppo corrente.")
+        await update.message.reply_text("⚠️ Il file delle classifiche non esiste.")
 
 async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -537,7 +503,7 @@ async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"\\- {scores.get('cinquina')} punti per *cinquina*;\n"
         f"\\- {scores.get('tombola')} punti per *tombola*;\n\n"
         "Inoltre, sono previsti i seguenti bonus e malus\\:\n"
-        "\\- All'estrazione del numero 104 viene assegnato un punteggio casuale \\(da 1 a 49\\) a un utente casuale;\n"
+        "\\- All'estrazione del numero 110 viene assegnato un punteggio casuale \\(da 1 a 49\\) a un utente casuale;\n"
         "\\- All'estrazione del numero 666 vengono rimossi punti casuali \\(da 1 a 49\\) a un utente casuale\\.\n"
     )
     try:
