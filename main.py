@@ -345,7 +345,7 @@ async def main():
     app = builder.build()
 
     # Aggiungi handler
-    app.add_handler(CommandHandler('start', start_game))
+    app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('trombola', start_game))
     app.add_handler(CommandHandler('estrai', estrai))
     app.add_handler(CommandHandler('stop', stop_game))
