@@ -1,82 +1,66 @@
 from telegram import Update
 from telegram.ext import ContextTypes, CallbackContext
 import logging
-import json
+import requests
 import os
 from telegram.constants import ParseMode
-from pathlib import Path
-from datetime import datetime
-from github import Github
+from dotenv import load_dotenv
 
 # Impostazioni logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
 # Variabili globali per chat_id e thread_id
 chat_id_global = None
 thread_id_global = None
-SETTINGS_FILE = Path(__file__).parent / "group_settings.json"
+SETTINGS_FILE = "group_settings.json"
 OWNER_USER_ID = "547260823"
-
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-REPO_NAME = "Lucaa220/Tombola"
-REMOTE_PATH = "classifiche.json"
-
-def push_json_to_github(local_json_path: str, commit_message: str = None):
-    with open(local_json_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    gh = Github(GITHUB_TOKEN)
-    repo = gh.get_repo(REPO_NAME)
-    
-    try:
-        contents = repo.get_contents(REMOTE_PATH)
-        sha = contents.sha
-    except Exception as e:
-        sha = None
-    
-    if not commit_message:
-        commit_message = f"Aggiorno stato bot — {datetime.utcnow().isoformat()}Z"
-    
-    repo.update_file(
-        path=REMOTE_PATH,
-        message=commit_message,
-        content=content,
-        sha=sha,
-        branch="main"  # o un’altra branch a tua scelta
-    )
-    print(f"✅ {REMOTE_PATH} aggiornato su GitHub")
+JSONBIN_API_KEY = os.getenv("JSONBIN_API_KEY")
+GROUP_SETTINGS_BIN_ID = os.getenv("GROUP_SETTINGS_BIN_ID")
+CLASSIFICA_BIN_ID = os.getenv("CLASSIFICA_BIN_ID")
+LOG_BIN_ID = os.getenv("LOG_BIN_ID")
 
 def load_group_settings():
-    if not SETTINGS_FILE.exists():
-        return {}
+    headers = {
+        "X-Master-Key": JSONBIN_API_KEY,
+        "Content-Type": "application/json"
+    }
+    # Assicurati che GROUP_SETTINGS_BIN_ID sia caricato correttamente, es. da variabili d'ambiente
+    url = f"https://api.jsonbin.io/v3/b/{GROUP_SETTINGS_BIN_ID}/latest"
     try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except json.JSONDecodeError:
-        logger.error("Corrupted settings file, loading empty settings.")
-        return {}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  
+        data = response.json()
 
+        while isinstance(data, dict) and 'record' in data and isinstance(data.get('record'), dict):
+            data = data['record']
+
+        if isinstance(data, dict):
+            return data # Restituisce il dizionario "scartato"
+        else:
+            logger.error(f"I dati delle impostazioni caricati non sono un dizionario dopo lo scartamento: {type(data)}")
+            return {}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Errore durante il caricamento delle impostazioni dei gruppi da JSONBin.io: {e}")
+        return {}
+    except (TypeError, KeyError, AttributeError) as e: # Aggiunto AttributeError
+        logger.error(f"Errore nel parsing della struttura JSON delle impostazioni: {e}")
+        return {}
 
 def save_group_settings(settings):
-    """Salva le impostazioni dei gruppi nel file group_settings.json e le pusha su GitHub."""
+    headers = {
+        "X-Master-Key": JSONBIN_API_KEY,
+        "Content-Type": "application/json"
+    }
+    url = f"https://api.jsonbin.io/v3/b/{GROUP_SETTINGS_BIN_ID}"
     try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as file:
-            json.dump(settings, file, ensure_ascii=False, indent=4)
-        logger.info(f"Settings salvati correttamente in {SETTINGS_FILE}.")
-    except Exception as e:
-        logger.error(f"Errore durante il salvataggio delle impostazioni: {e}")
-        return
-
-    # Push su GitHub
-    try:
-        push_json_to_github(
-            local_json_path=str(SETTINGS_FILE),
-            commit_message="Aggiorno impostazioni — " + datetime.utcnow().isoformat() + "Z"
-        )
-        logger.info("✅ Impostazioni aggiornate anche su GitHub.")
-    except Exception as e:
-        logger.error(f"Errore nel push delle impostazioni su GitHub: {e}")
+        response = requests.put(url, headers=headers, json=settings)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Errore durante il salvataggio delle impostazioni dei gruppi su JSONBin.io: {e}")
 
 # Funzione per ottenere chat_id e thread_id se applicabile
 def get_chat_id_or_thread(update: Update):
@@ -97,7 +81,8 @@ def get_admin_limitation(chat_id):
         settings[str(chat_id)] = {'extraction_mode': 'manual', 'limita_admin': True}  # Impostazione predefinita: limita admin
         save_group_settings(settings)
     else:
-        pass
+        logger.info(f"Stato corrente della limitazione admin per chat {chat_id}: {settings[str(chat_id)].get('limita_admin', True)}")
+    
     return settings[str(chat_id)].get('limita_admin', True)
 
 
@@ -237,5 +222,6 @@ async def on_bot_added(update: Update, context: CallbackContext):
         # Invia il messaggio al proprietario
         try:
             await context.bot.send_message(chat_id=OWNER_USER_ID, text=gruppo_info)
+            logger.info(f"Informazioni inviate al proprietario: {OWNER_USER_ID}")
         except Exception as e:
             logger.error(f"Errore nell'invio del messaggio: {e}")
