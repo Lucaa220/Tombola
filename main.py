@@ -1,40 +1,54 @@
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ChatMemberHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ChatMemberHandler
 import os
 import logging
 from telegram.constants import ParseMode
 import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
-from game_instance import get_game, load_classifica_from_json, save_classifica_to_json
-import sys
-from pathlib import Path
 import json
 
-load_dotenv()
+if os.name == 'nt':
+    from asyncio import WindowsProactorEventLoopPolicy
+    asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
+    logging.info("Using Windows ProactorEventLoop")
+else:
+    try:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+        logging.info("Using uvloop EventLoopPolicy")
+    except ImportError:
+        logging.info("uvloop non disponibile, uso asyncio di default")
+
 
 # Importa i tuoi moduli locali
-from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole
-from game_instance import get_game
-from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added
-from log import send_logs_by_group, handle_all_commands
+from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole  # Assicurati che questi siano corretti
+from game_instance import get_game  # Assicurati che questo sia corretto
+from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added  # Assicurati che questi siano corretti
+from log import send_logs_by_group, handle_all_commands # Assicurati che questi siano corretti
 
-# Configura il logging su stdout
-handler = logging.StreamHandler(sys.stdout)
-logger = logging.getLogger(__name__)
-handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+_chat_info_cache: dict[int, dict] = {}
+_cache_ttl = 3600
 
+async def get_cached_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    now = asyncio.get_event_loop().time()
+    entry = _chat_info_cache.get(chat_id)
+    if entry and now - entry['ts'] < _cache_ttl:
+        return entry['info']
+    try:
+        info = await context.bot.get_chat(chat_id)
+        _chat_info_cache[chat_id] = {'info': info, 'ts': now}
+        return info
+    except Exception:
+        return None
+
+# Impostazioni logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Dizionario premi di default
 premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
-
-
 
 # Funzione per l'estrazione automatica
 async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
@@ -47,8 +61,7 @@ async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
 
     if mode == 'auto':
         await estrai(None, context)  # Chiama la funzione di estrazione senza controllare admin
-    else:
-        pass
+
 # Comando impostazioni con menu a bottoni
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -72,7 +85,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    text = "*📱 Benvenuto nel pannello di controllo!*\n\n_📲 Da dove vuoi iniziare la configurazione?_"
+    text = "*📱 Benvenuto nel pannello di controllo\\!*\n\n_📲 Da dove vuoi iniziare la configurazione\\?_"
     if update.callback_query:
         await message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
     else:
@@ -150,6 +163,7 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings[str(chat_id)] = {}
 
     action = query.data
+    logger.info(f"settings_button: {action}")
 
     if action == 'menu_estrazione':
         await show_extraction_menu(query, chat_id, settings)
@@ -203,10 +217,10 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
             await query.answer()
         except Exception as e:
+            logger.error(f"Errore eliminazione messaggio: {e}")
             await query.answer("Errore nel chiudere il menu.")
     else:
         await query.answer()
-
 
 def get_extraction_mode(chat_id):
     settings = load_group_settings()
@@ -275,97 +289,89 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     action = query.data
+    user = query.from_user
+    username = user.username if user.username else user.full_name # Usa username se disponibile, altrimenti il nome completo
+    user_id = user.id
+
+    logger.info(f"Callback data '{action}' ricevuto da utente: {username} (ID: {user_id})")
+    
     if action.startswith('set_') or action in ['menu_estrazione', 'menu_admin', 'menu_premi', 'menu_bonus', 'back_to_main_menu', 'close_settings', 'reset_premi']:
         await settings_button(update, context)
     else:
         await button(update, context)
 
-# ------------------ WEBHOOK E HEALTH ------------------
-async def webhook_get(request):
-    return web.Response(text="Questo endpoint accetta solo POST per il webhook.")
-
-async def webhook_handler(request):
-    # Aggiungi logging per verificare la ricezione dell'update
-    try:
-        update_data = await request.json()
-        update = Update.de_json(update_data, application.bot)
-        asyncio.create_task(application.process_update(update))
-    except Exception as e:
-        logger.error("Errore nel webhook handler: %s", e)
-    return web.Response(text="OK")
-
 async def health_check(request):
     try:
-        me = await application.bot.get_me()
-        return web.Response(text=f"Bot {me.username} attivo!")
+        me = await app.bot.get_me()
+        return web.Response(text=f"Bot @{me.username} attivo!")
     except Exception as e:
-        logger.error(f"Errore nel health check: {e}")
+        logger.error(f"Health check fallito: {e}")
         return web.Response(status=500, text="Bot non disponibile")
 
-async def setup_webapp():
-    app = web.Application()
-    # Registra endpoint GET e POST per /webhook
-    app.router.add_get('/webhook', webhook_get)
-    app.router.add_post('/webhook', webhook_handler)
-    app.router.add_get('/health', health_check)
-    app.router.add_get('/', health_check)
-    return app
+async def handle_webhook(request):
+    data = await request.json()
+    update = Update.de_json(data, app.bot)
+    asyncio.create_task(app.process_update(update))
+    return web.Response(text='OK')
 
 async def self_ping():
     while True:
+        await asyncio.sleep(14 * 60)
         try:
-            await asyncio.sleep(14 * 60)  # 14 minuti
+            await app.bot.get_updates(offset=-1, timeout=1)
         except Exception as e:
-            logger.error(f"Errore nel self-ping: {e}")
+            logger.error(f"Self-ping fallito: {e}")
 
-async def main():
-    global application
-    global TOKEN
-    logger.info("Configurazione del bot...")
-    TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://tuo-dominio/webhook')
-    PORT = int(os.getenv('PORT', 10000))
-    
-    # Creazione dell'applicazione
-    application = Application.builder().token(TOKEN).build()
-    
-    # Inizializza e avvia l'applicazione
-    await application.initialize()
-    await application.start()
-    
-    # Registrazione degli handler
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("trombola", start_game))
-    application.add_handler(CommandHandler("estrai", estrai))
-    application.add_handler(CommandHandler("stop", stop_game))
-    application.add_handler(CommandHandler("classifiga", classifica))
-    application.add_handler(CommandHandler("azzera", reset_classifica))
-    application.add_handler(CommandHandler("impostami", settings_command))
-    application.add_handler(CommandHandler("trombolatori", numero_giocatori))
-    application.add_handler(CommandHandler("trova", find_group))
-    application.add_handler(CommandHandler("log", send_logs_by_group))
-    application.add_handler(CommandHandler("regolo", regole))
-    application.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
-    application.add_handler(CallbackQueryHandler(combined_button_handler))
-    application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
-    
-    # Imposta il webhook
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    logger.info(f"Webhook impostato su {WEBHOOK_URL}")
-    
-    # Configura e avvia il server web
-    app = await setup_webapp()
-    runner = web.AppRunner(app)
+async def start_webserver():
+    webapp = web.Application()
+    webapp.router.add_get('/', health_check)
+    webapp.router.add_get('/health', health_check)
+    webapp.router.add_post('/webhook', handle_webhook)
+    runner = web.AppRunner(webapp)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
-    logger.info(f"Avvio del server web sulla porta {PORT}...")
     await site.start()
-    
-    logger.info("Bot avviato con webhook, in attesa di richieste...")
-    
-    # Mantieni il processo attivo
-    await asyncio.gather(self_ping(), asyncio.sleep(3600*24*365))  # esempio per tenere il loop attivo
+    logger.info(f"Webserver avviato su porta {PORT}")
+
+async def main():
+    global app, PORT
+    load_dotenv()
+    TOKEN = os.getenv('BOT_TOKEN')
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g. https://domain.com/webhook
+    PORT = int(os.getenv('PORT', '8443'))
+
+    # Istanzia bot
+    builder = Application.builder().token(TOKEN)
+    app = builder.build()
+
+    # Aggiungi handler
+    app.add_handler(CommandHandler('start', start_game))
+    app.add_handler(CommandHandler('trombola', start_game))
+    app.add_handler(CommandHandler('estrai', estrai))
+    app.add_handler(CommandHandler('stop', stop_game))
+    app.add_handler(CommandHandler('impostami', settings_command))
+    app.add_handler(CommandHandler('trombolatori', numero_giocatori))
+    app.add_handler(CommandHandler('classifica', classifica))
+    app.add_handler(CommandHandler('azzera', reset_classifica := settings_command))
+    app.add_handler(CommandHandler('regole', regole))
+    app.add_handler(CommandHandler('trova', find_group))
+    app.add_handler(CommandHandler('log', send_logs_by_group))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
+
+    # CallbackQuery: settings prima, poi button
+    app.add_handler(CallbackQueryHandler(settings_button, pattern='^(menu_|set_|back_to_main_menu|close_settings|reset_premi)'))
+    app.add_handler(CallbackQueryHandler(button))
+
+    app.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+
+    # Imposta webhook Telegram
+    await app.initialize()
+    await app.bot.set_webhook(WEBHOOK_URL)
+    await app.start()
+    logger.info(f"Webhook impostato su {WEBHOOK_URL}")
+
+    # Avvia webserver e self-ping
+    await asyncio.gather(start_webserver(), self_ping())
 
 if __name__ == '__main__':
     asyncio.run(main())
-
