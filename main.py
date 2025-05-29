@@ -26,7 +26,7 @@ else:
 from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole  # Assicurati che questi siano corretti
 from game_instance import get_game  # Assicurati che questo sia corretto
 from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added  # Assicurati che questi siano corretti
-from log import send_logs_by_group, handle_all_commands # Assicurati che questi siano corretti
+from log import send_logs_by_group # Assicurati che questi siano corretti
 
 _chat_info_cache: dict[int, dict] = {}
 _cache_ttl = 3600
@@ -336,7 +336,7 @@ async def start_webserver():
 async def main():
     global app, PORT
     load_dotenv()
-    TOKEN = os.getenv('BOT_TOKEN')
+    TOKEN = os.getenv('TOKEN')
     WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g. https://domain.com/webhook
     PORT = int(os.getenv('PORT', '8443'))
 
@@ -356,7 +356,6 @@ async def main():
     app.add_handler(CommandHandler('regole', regole))
     app.add_handler(CommandHandler('trova', find_group))
     app.add_handler(CommandHandler('log', send_logs_by_group))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_all_commands))
 
     # CallbackQuery: settings prima, poi button
     app.add_handler(CallbackQueryHandler(settings_button, pattern='^(menu_|set_|back_to_main_menu|close_settings|reset_premi)'))
