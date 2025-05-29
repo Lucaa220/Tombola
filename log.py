@@ -1,180 +1,158 @@
-import json
-from telegram.constants import ParseMode
+import os
+import asyncio
 from datetime import datetime, timedelta
+from typing import List, Dict
+import aiohttp
 from telegram import Update
+from telegram.constants import ParseMode
+from telegram.helpers import escape_markdown
 from telegram.ext import ContextTypes
+from variabili import JSONBIN_API_KEY, OWNER_USER_ID, LOG_BIN_ID
 
-LOG_FILE = "interaction_log.json"
-FOUNDER_ID = 547260823
-BOT_USERNAME = "@Tombola2_Bot"
-
-giorni = {
-    0: "lunedì",
-    1: "martedì",
-    2: "mercoledì",
-    3: "giovedì",
-    4: "venerdì",
-    5: "sabato",
-    6: "domenica",
+# Lista dei comandi validi del bot
+VALID_COMMANDS = {
+    '/trombola', '/estrai', '/stop', '/azzera',
+    '/impostami'
 }
 
-mesi = {
-    1: "gennaio",
-    2: "febbraio",
-    3: "marzo",
-    4: "aprile",
-    5: "maggio",
-    6: "giugno",
-    7: "luglio",
-    8: "agosto",
-    9: "settembre",
-    10: "ottobre",
-    11: "novembre",
-    12: "dicembre",
-}
+# Buffer in memoria per i log
+_log_buffer: List[Dict] = []
+_buffer_lock = asyncio.Lock()
+_flush_interval = 60  # secondi
+_batch_size = 50      # flush quando buffer supera questa soglia
 
-# Funzione per pulire il file di log: conserva solo le entry degli ultimi 7 giorni
-def cleanup_logs():
+async def _flush_logs_periodically():
+    """
+    Task di background: ogni _flush_interval secondi, invia il buffer a JSONBin.
+    """
+    async with aiohttp.ClientSession(headers={
+        'X-Master-Key': JSONBIN_API_KEY,
+        'Content-Type': 'application/json'
+    }) as session:
+        while True:
+            await asyncio.sleep(_flush_interval)
+            await _flush_buffer(session)
+
+async def _flush_buffer(session: aiohttp.ClientSession):
+    """
+    Invia logs accumulati al bin, poi svuota il buffer.
+    """
+    async with _buffer_lock:
+        if not _log_buffer:
+            return
+        # Prepara payload: un array di entry
+        payload = _log_buffer.copy()
+        _log_buffer.clear()
+
+    url = f"https://api.jsonbin.io/v3/b/{LOG_BIN_ID}"
     try:
-        with open(LOG_FILE, "r") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
+        async with session.put(url, json=payload) as resp:
+            resp.raise_for_status()
+    except Exception as e:
+        # In caso di errore, reinserisci i dati nel buffer
+        async with _buffer_lock:
+            _log_buffer[0:0] = payload  # re-inserimento all'inizio
+        print(f"[LogFlushError] Errore salvataggio log: {e}")
+
+async def init_logging_loop():
+    """
+    Avvia il task di flush periodico. Chiamare all'avvio del bot.
+    """
+    asyncio.create_task(_flush_logs_periodically())
+
+async def log_interaction(user_id: int, username: str, chat_id: int, command: str, group_name: str):
+    """
+    Registra nel buffer solo i comandi validi.
+    """
+    if command not in VALID_COMMANDS:
         return
 
-    new_lines = []
-    cutoff = datetime.now() - timedelta(days=7)
-    for line in lines:
-        try:
-            entry = json.loads(line)
-            entry_time = datetime.fromisoformat(entry["timestamp"])
-            if entry_time >= cutoff:
-                new_lines.append(line)
-        except Exception:
-            continue
-    with open(LOG_FILE, "w") as f:
-        f.writelines(new_lines)
-
-# Funzione per loggare l'interazione (solo i comandi del bot vengono registrati)
-def log_interaction(user_id, username, chat_id, command, group_name):
-    cleanup_logs()
-    log_entry = {
-        "user_id": user_id,
-        "username": username,
-        "chat_id": chat_id,
-        "group_name": group_name,
-        "command": command,
-        "timestamp": str(datetime.now())
+    entry = {
+        'timestamp': datetime.utcnow().isoformat(),
+        'user_id': user_id,
+        'username': username,
+        'chat_id': chat_id,
+        'group_name': group_name,
+        'command': command
     }
-    with open(LOG_FILE, "a") as log_file:
-        json.dump(log_entry, log_file)
-        log_file.write("\n")
-
-def split_text(text, max_length=4096):
-    return [text[i:i + max_length] for i in range(0, len(text), max_length)]
-
-async def track_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.full_name
-    chat_id = update.effective_chat.id
-    group_name = update.effective_chat.title
-
-    # Comandi ammessi
-    allowed_commands = ["/trombola", "/stop", "/estrai"]
-
-    # Se è un messaggio con un comando
-    if update.message and update.message.text:
-        # Prendi la prima parola (il comando) e normalizzala (rimuovendo eventuale bot mention e in lowercase)
-        command_full = update.message.text.split()[0]
-        command_normalized = command_full.split('@')[0].lower()
-        if command_normalized in allowed_commands:
-            log_interaction(user_id, username, chat_id, update.message.text, group_name)
-
-    # Se è un callback di un bottone inline (si registra comunque)
-    elif update.callback_query:
-        callback_data = update.callback_query.data
-        log_interaction(user_id, username, chat_id, f"Bottone: {callback_data}", group_name)
+    async with _buffer_lock:
+        _log_buffer.append(entry)
+        # Se buffer grande, flush immediato
+        if len(_log_buffer) >= _batch_size:
+            # usa session temporanea
+            async with aiohttp.ClientSession(headers={
+                'X-Master-Key': JSONBIN_API_KEY,
+                'Content-Type': 'application/json'
+            }) as session:
+                await _flush_buffer(session)
 
 async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private":
-        await update.message.reply_text("Questo comando può essere usato solo in chat privata.")
+    """
+    Comando /log: mostra i log raggruppati per chat nelle ultime 24 ore o per data.
+    Solo OWNER_USER_ID può usarlo.
+    """
+    user_id = update.effective_user.id
+    if user_id != int(OWNER_USER_ID):
+        await update.message.reply_text("🚫 Non autorizzato.")
         return
 
-    # Ottieni la data specificata come argomento, se presente
     args = context.args
+    specific_date = None
     if args:
         try:
-            specified_date = datetime.strptime(args[0], "%d-%m-%Y").date()
+            specific_date = datetime.strptime(args[0], "%Y-%m-%d").date()
         except ValueError:
-            await update.message.reply_text("⚠️ Formato data non valido. Usa il formato: /log DD-MM-YYYY")
+            await update.message.reply_text("Formato data invalido, usa AAAA-MM-GG.")
             return
-    else:
-        specified_date = None
 
-    # Ottieni i log raggruppati per ogni gruppo, filtrato per la data specificata o ultime 24 ore
-    grouped_logs = get_recent_group_logs(hours=24, specific_date=specified_date)
-
-    if grouped_logs:
-        for group_id, group_logs in grouped_logs.items():
-            group_name = group_logs[0].get("group_name", None)
-            if group_name == "Gruppo Sconosciuto":
+    all_logs = await _fetch_all_logs()
+    # Filtra entrate
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    by_group: Dict[int, List[dict]] = {}
+    for log in all_logs:
+        ts = datetime.fromisoformat(log['timestamp'])
+        if specific_date:
+            if ts.date() != specific_date:
                 continue
+        elif ts < cutoff:
+            continue
+        gid = log['chat_id']
+        by_group.setdefault(gid, []).append(log)
 
-            log_text = f"📜 Log del Gruppo {group_name} (ultime 24h):\n\n" if not specified_date else f"📜 Log del Gruppo {group_name} ({specified_date}):\n\n"
-            logs_by_date = {}
+    if not by_group:
+        await update.message.reply_text("⚠️ Nessun log trovato.")
+        return
 
-            # Raggruppa i log per data
-            for log in group_logs:
-                timestamp = datetime.fromisoformat(log['timestamp'])
-                date_key = timestamp.date()
-                if date_key not in logs_by_date:
-                    logs_by_date[date_key] = []
-                logs_by_date[date_key].append(log)
+    # Costruisci testo
+    parts = []
+    for gid, logs in by_group.items():
+        gname = escape_markdown(logs[0]['group_name'], version=2)
+        parts.append(f"*Log gruppo:* {gname} (`{gid}`)\n")
+        for log in logs:
+            t = datetime.fromisoformat(log['timestamp']).strftime('%H:%M:%S')
+            cmd = escape_markdown(log['command'], version=2)
+            user = escape_markdown(log['username'], version=2)
+            parts.append(f"`[{t}]` {user} -> {cmd}\n")
+        parts.append("\n")
+    text = ''.join(parts)
+    # Spezza in chunk
+    for i in range(0, len(text), 4000):
+        await update.message.reply_text(text[i:i+4000], parse_mode=ParseMode.MARKDOWN_V2)
 
-            for date, logs in sorted(logs_by_date.items()):
-                if specified_date and date != specified_date:
-                    continue
-
-                giorno_settimana = giorni[date.weekday()]
-                giorno = date.day
-                mese = mesi[date.month]
-                anno = date.year
-
-                log_text += f"\n📅 {giorno_settimana}, {giorno} {mese} {anno}:\n\n"
-                for log in logs:
-                    formatted_time = datetime.fromisoformat(log['timestamp']).strftime("%H:%M:%S")
-                    log_text += f"  🕒 {formatted_time} - @{log['username']} ha usato: {log['command']}\n"
-
-            # Invia il log suddiviso in parti se necessario
-            for text_part in split_text(log_text):
-                await update.message.reply_text(text_part)
-
-    else:
-        await update.message.reply_text("⚠️ Nessun log disponibile per i gruppi conosciuti nelle ultime 24 ore.")
-
-def get_recent_group_logs(hours=24, specific_date=None):
-    logs_by_group = {}
-    cutoff_time = datetime.now() - timedelta(hours=hours)
-    try:
-        with open(LOG_FILE, "r") as log_file:
-            for line in log_file:
-                log_entry = json.loads(line.strip())
-                log_time = datetime.fromisoformat(log_entry["timestamp"])
-
-                # Se è stata specificata una data, filtra per quella, altrimenti usa il cutoff delle 24 ore
-                if specific_date:
-                    if log_time.date() != specific_date:
-                        continue
-                elif log_time < cutoff_time:
-                    continue
-
-                chat_id = log_entry["chat_id"]
-                if chat_id not in logs_by_group:
-                    logs_by_group[chat_id] = []
-                logs_by_group[chat_id].append(log_entry)
-    except Exception as e:
-        print(f"Errore nella lettura del file log: {e}")
-    return logs_by_group
-
-# Funzione per collegare il tracking dei comandi a tutti i comandi usati nel gruppo
-async def handle_all_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await track_command(update, context)
+async def _fetch_all_logs() -> List[dict]:
+    """
+    Recupera tutti i log dal JSONBin.
+    """
+    url = f"https://api.jsonbin.io/v3/b/{LOG_BIN_ID}/latest"
+    headers = {'X-Master-Key': JSONBIN_API_KEY}
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            record = data.get('record', {})
+            # Gestione incapsulamenti
+            if isinstance(record, dict) and 'record' in record:
+                return record['record']
+            if isinstance(record, list):
+                return record
+    return []
