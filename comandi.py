@@ -15,7 +15,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.full_name
     chat_id, thread_id = get_chat_id_or_thread(update)
     group_name = update.message.chat.title or "il gruppo"
-    log_interaction(user_id, username, chat_id, "/trombola", group_name)
+    await log_interaction(user_id, username, chat_id, "/trombola", group_name)
 
     if not await is_admin(update, context):
         await update.message.reply_text("🚫 Solo gli amministratori possono avviare il gioco.")
@@ -159,7 +159,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_text = f"[{escaped_group_name}]({group_link})" if group_link else escaped_group_name
 
     # Log dell'interazione
-    log_interaction(user_id, username, group_chat_id, query.data, group_name)
+    await log_interaction(user_id, username, group_chat_id, query.data, group_name)
 
     if query.data == 'join_game':
         game = get_game(group_chat_id)
