@@ -21,33 +21,22 @@ JSONBIN_API_KEY = os.getenv("JSONBIN_API_KEY")
 GROUP_SETTINGS_BIN_ID = os.getenv("GROUP_SETTINGS_BIN_ID")
 CLASSIFICA_BIN_ID = os.getenv("CLASSIFICA_BIN_ID")
 LOG_BIN_ID = os.getenv("LOG_BIN_ID")
+# Dizionario premi di default
+premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
 
 def load_group_settings():
     headers = {
         "X-Master-Key": JSONBIN_API_KEY,
         "Content-Type": "application/json"
     }
-    # Assicurati che GROUP_SETTINGS_BIN_ID sia caricato correttamente, es. da variabili d'ambiente
     url = f"https://api.jsonbin.io/v3/b/{GROUP_SETTINGS_BIN_ID}/latest"
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()  
         data = response.json()
-
-        while isinstance(data, dict) and 'record' in data and isinstance(data.get('record'), dict):
-            data = data['record']
-
-        if isinstance(data, dict):
-            return data # Restituisce il dizionario "scartato"
-        else:
-            logger.error(f"I dati delle impostazioni caricati non sono un dizionario dopo lo scartamento: {type(data)}")
-            return {}
-
+        return data.get('record', {})
     except requests.exceptions.RequestException as e:
         logger.error(f"Errore durante il caricamento delle impostazioni dei gruppi da JSONBin.io: {e}")
-        return {}
-    except (TypeError, KeyError, AttributeError) as e: # Aggiunto AttributeError
-        logger.error(f"Errore nel parsing della struttura JSON delle impostazioni: {e}")
         return {}
 
 def save_group_settings(settings):
@@ -225,3 +214,15 @@ async def on_bot_added(update: Update, context: CallbackContext):
             logger.info(f"Informazioni inviate al proprietario: {OWNER_USER_ID}")
         except Exception as e:
             logger.error(f"Errore nell'invio del messaggio: {e}")
+
+def get_sticker_for_number(number):
+    stickers = {
+        69: "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE",
+        90: "CAACAgEAAxkBAAEt32Vm8Z_GSXsHJiUjkcuuFKbOn6-C5QAC5gUAAknjsAjqSIl2V50ugDYE",
+        104: "CAACAgQAAxkBAAExyBZnsMNjcmrjrNQpNTTiJDhIuaqLEAACLhcAAsNrSVEvCd8T5g72HDYE",
+        666: "CAACAgQAAxkBAAEx-sBnuLFsYCU3q7RM7U0-kKNSkEHAhgACXAADIPteF9q_7MKC2ERiNgQ",
+        110: "CAACAgQAAxkBAAE1oqxoOXr1BaVGLmjQ6UfsbRTTcVOgtQACJwoAArybIFHOnHbz_EYnizYE",
+        404: "CAACAgQAAxkBAAE1oq5oOXsd4KgUBf_Zprzwu8ewEMVqmAACowwAAkwu8FPV9fZm6lrXPDYE"
+    }
+    return stickers.get(number)
+
