@@ -134,15 +134,16 @@ async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE)
             user = escape_markdown(log['username'], version=2)
             parts.append(f"`[{t}]` {user} -> {cmd}\n")
         parts.append("\n")
+    
+    # Unire tutto il testo e applicare escape
     text = ''.join(parts)
+    escaped_text = escape_markdown(text, version=2)
+
     # Spezza in chunk
-    for i in range(0, len(text), 4000):
-        await update.message.reply_text(text[i:i+4000], parse_mode=ParseMode.MARKDOWN_V2)
+    for i in range(0, len(escaped_text), 4000):
+        await update.message.reply_text(escaped_text[i:i+4000], parse_mode=ParseMode.MARKDOWN_V2)
 
 async def _fetch_all_logs() -> List[dict]:
-    """
-    Recupera tutti i log dal JSONBin.
-    """
     url = f"https://api.jsonbin.io/v3/b/{LOG_BIN_ID}/latest"
     headers = {'X-Master-Key': JSONBIN_API_KEY}
     async with aiohttp.ClientSession(headers=headers) as session:
