@@ -1,8 +1,9 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import telegram
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from game_instance import get_game, load_classifica_from_json
-from variabili import get_chat_id_or_thread, is_admin, load_group_settings
+from game_instance import get_game, load_classifica_from_json, save_classifica_to_json
+from variabili import get_chat_id_or_thread, is_admin, load_group_settings, get_sticker_for_number
 import asyncio
 import json
 import os
@@ -246,135 +247,148 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
 async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Solo admin possono estrarre
     if not await is_admin(update, context):
         return
 
     chat_id, thread_id = get_chat_id_or_thread(update)
     game = get_game(chat_id)
+    
     if not game.game_active:
         await context.bot.send_message(
-            chat_id=chat_id, 
+            chat_id=chat_id,
             text="🚫 Assicurati di aver iniziato una partita prima.",
             message_thread_id=thread_id
         )
         return
 
+    # Avvia estrazione se non già partita
     if not game.extraction_started:
         game.start_extraction()
 
-    group_settings = load_group_settings()
-    modalita_estrazione = group_settings.get(str(chat_id), {}).get('extraction_mode', 'manual')
-    estrazione_automatica = modalita_estrazione == 'auto'
-    # Carica la configurazione bonus/malus (default True)
-    bonus_malus_enabled = group_settings.get(str(chat_id), {}).get("bonus_malus", True)
+    # Carica impostazioni di gruppo
+    group_settings = load_group_settings().get(str(chat_id), {})
+    mode = group_settings.get('extraction_mode', 'manual')
+    tombolino_enabled = group_settings.get("bonus_malus_settings", {}).get("Tombolino", True)
 
-    keyboard = [
-        [InlineKeyboardButton("🔎 Vedi Cartella", callback_data='mostra_cartella')]
-    ]
-    if not estrazione_automatica:
-        keyboard.insert(0, [InlineKeyboardButton("🔁 Estrai un Numero", callback_data='draw_number')])
+    # Pulsante per vedere la cartella
+    keyboard = [[InlineKeyboardButton("🔎 Vedi Cartella", callback_data='mostra_cartella')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    async def update_player(user_id, number, update, context):
-        name_for_logic_and_display = game.usernames.get(user_id) # user_id è la chiave (int)
-        if not name_for_logic_and_display: # Fallback: se non è in cache, recuperalo e memorizzalo
+    async def update_player(user_id: int, number: int):
+        # Mantieni la logica di update_player già esistente
+        name = game.usernames.get(user_id)
+        if not name:
             try:
-                chat_member_info = await context.bot.get_chat_member(chat_id, user_id) # chat_id del gruppo
-                if chat_member_info.user.username:
-                    name_for_logic_and_display = chat_member_info.user.username
-                else:
-                    name_for_logic_and_display = chat_member_info.user.full_name
-
-                if not name_for_logic_and_display: # Estremo fallback
-                    name_for_logic_and_display = f"Utente_{user_id}"
-
-                game.usernames[user_id] = name_for_logic_and_display # Memorizza per usi futuri
+                member = await context.bot.get_chat_member(chat_id, user_id)
+                name = member.user.username or member.user.full_name or f"Utente_{user_id}"
             except Exception as e:
-                logger.error(f"Errore nel recuperare/memorizzare il nome utente per {user_id} in update_player (gruppo {chat_id}): {e}")
-                name_for_logic_and_display = f"Utente_{user_id}" # Fallback finale
+                logger.error(f"Errore nel recuperare il membro: {e}")
+                name = f"Utente_{user_id}"
+            game.usernames[user_id] = name
 
-        cartella = game.players[user_id]
+        # Aggiorna la cartella e invia DM se trovato numero
         updated = game.update_cartella(user_id, number)
         if updated:
-            formatted_cartella = game.format_cartella(cartella)
+            cart_text = game.format_cartella(game.players[user_id])
             try:
                 await context.bot.send_message(
                     chat_id=user_id,
-                    text=f"*🔒 Avevi il numero {number:02}\\!*\n\n{formatted_cartella}",
+                    text=f"*🔒 Avevi il numero {number:02}\\!*\n\n{cart_text}",
                     parse_mode=ParseMode.MARKDOWN_V2
                 )
             except Exception as e:
-                logger.warning(f"Impossibile inviare messaggio a {user_id}: {e}")
-                return
+                logger.error(f"Errore nell'invio del messaggio al giocatore {user_id}: {e}")
 
-        try:
-            chat_member = await context.bot.get_chat_member(chat_id, user_id)
-            username_player = chat_member.user.username or chat_member.user.full_name
-        except Exception as e:
-            username_player = f"utente_{user_id}"
-        result = game.check_winner(user_id, username_player, context)
-        escaped_username_player = escape_markdown(username_player, version=2)
+        # Controlla vincitore (tombola/tombolino)
+        result = await game.check_winner(user_id, name, context)
         if result:
+            escaped = escape_markdown(name, version=2)
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"_🏆 @{escaped_username_player} ha fatto {result}\\!_",
+                text=f"_🏆 @{escaped} ha fatto {result}\\!_",
                 message_thread_id=thread_id,
                 parse_mode=ParseMode.MARKDOWN_V2
             )
-            if result == "tombola e la partita è terminata":
+            if result.endswith("la partita è terminata"):
                 await end_game(update, context)
 
-    async def extract_and_update():
-        number = await game.draw_number(context)
-        # Se bonus/malus sono disattivati, ignora i numeri 110 e 666
-        while number is not None and (not bonus_malus_enabled) and (number in [110, 666]):
-            number = await game.draw_number(context)
+    async def extract_loop():
+        """Estrae numeri fino a chiusura partita, gestendo flood control e aggiornamenti."""
+        while game.game_active:
+            try:
+                number = await game.draw_number(context)
+            except telegram.error.RetryAfter as e:
+                logger.warning(f"Flood control exceeded, attendo {e.retry_after} secondi...")
+                await asyncio.sleep(e.retry_after)
+                continue
+            except Exception as e:
+                logger.error(f"Errore durante l'estrazione del numero: {e}")
+                break
 
-        if number:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"_📤 È stato estratto il numero **{number:02}**_",
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                message_thread_id=thread_id
-            )
+            if number is None:
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text="Tutti i numeri sono stati estratti. Il gioco è finito!",
+                        message_thread_id=thread_id
+                    )
+                except telegram.error.RetryAfter as e:
+                    logger.warning(f"Flood control exceeded su messaggio finale, attendo {e.retry_after} secondi...")
+                    await asyncio.sleep(e.retry_after)
+                    continue
+                except Exception as e:
+                    logger.error(f"Errore nell'invio del messaggio finale: {e}")
+                await end_game(update, context)
+                break
 
-            if number == 69:
-                sticker_file_id = "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE"
-                await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-            elif number == 90:
-                sticker_file_id = "CAACAgEAAxkBAAEt32Vm8Z_GSXsHJiUjkcuuFKbOn6-C5QAC5gUAAknjsAjqSIl2V50ugDYE"
-                await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-            elif number == 110:
-                sticker_file_id = "CAACAgQAAxkBAAExyBZnsMNjcmrjrNQpNTTiJDhIuaqLEAACLhcAAsNrSVEvCd8T5g72HDYE"
-                await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-            elif number == 666:
-                sticker_file_id = "CAACAgQAAxkBAAEx-sBnuLFsYCU3q7RM7U0-kKNSkEHAhgACXAADIPteF9q_7MKC2ERiNgQ"
-                await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"_📤 È stato estratto il numero **{number:02}**_",
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=thread_id
+                )
+            except telegram.error.RetryAfter as e:
+                logger.warning(f"Flood control exceeded su annuncio numero, attendo {e.retry_after} secondi...")
+                await asyncio.sleep(e.retry_after)
+                continue
+            except Exception as e:
+                logger.error(f"Errore nell'invio del messaggio estrazione: {e}")
 
-            update_tasks = [
-                asyncio.create_task(update_player(uid, number, update, context))
-                for uid in game.players
-            ]
-            results = await asyncio.gather(*update_tasks, return_exceptions=True)
-            for res in results:
-                if isinstance(res, Exception):
-                    logger.error(f"Errore durante l'aggiornamento di un giocatore: {res}")
-            return True
-        else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="Tutti i numeri sono stati estratti. Il gioco è finito!",
-                message_thread_id=thread_id
-            )
-            await end_game(update, context)
-            return False
+            # Ritardo tra le estrazioni per prevenire flood (es. 1 secondo)
+            await asyncio.sleep(1)
 
-    if estrazione_automatica:
-        asyncio.create_task(auto_extraction_loop(update, context, game, chat_id, thread_id, extract_and_update))
+            # Invia sticker se numero speciale
+            if number in [69, 90, 104, 666, 110, 404]:
+                sticker = get_sticker_for_number(number)
+                try:
+                    await context.bot.send_sticker(chat_id=chat_id, sticker=sticker, message_thread_id=thread_id)
+                except Exception as e:
+                    logger.error(f"Errore nell'invio sticker per numero {number}: {e}")
+
+            # Aggiornamento parallelo di tutti i giocatori
+            try:
+                await update_all_players(game.players, number)
+            except Exception as e:
+                logger.error(f"Errore durante update_all_players: {e}")
+
+    async def update_all_players(players, number):
+        tasks = [asyncio.create_task(update_player(uid, number)) for uid in players]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for err in results:
+            if isinstance(err, Exception):
+                logger.error(f"Errore in update_player: {err}")
+
+    # Avvia il loop di estrazione in base alla modalità
+    if mode == 'auto':
+        # In background per non bloccare l'handler
+        asyncio.create_task(extract_loop())
     else:
-        await extract_and_update()
-
+        # Modalità manuale: esegue subito fino a fine
+        await extract_loop()
+        
 async def auto_extraction_loop(update, context, game, chat_id, thread_id, extract_and_update_func):
     while game.game_active and not game.game_interrupted:
         extracted = await extract_and_update_func()
@@ -396,41 +410,47 @@ async def end_game(update, context):
 import json
 import os
 
-async def send_final_rankings(update, context):
+async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, thread_id = get_chat_id_or_thread(update)
     sticker_file_id = "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
-    file_classifiche = "classifiche.json"
-    if not os.path.exists(file_classifiche):
-        await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+
+    # Carica la classifica dal bin
+    classifica_gruppo = load_classifica_from_json(chat_id)
+
+    if not classifica_gruppo:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*📊 Nessuna classifica disponibile\\.*",
+            message_thread_id=thread_id,
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
         return
-    with open(file_classifiche, "r", encoding="utf-8") as f:
-        classifiche = json.load(f)
-    group_id = str(chat_id)
-    if group_id in classifiche:
-        classifica_gruppo = classifiche[group_id]
-        classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
-        classifica_text = []
-        for posizione, (user_id, punteggio) in enumerate(classifica_ordinata):
-            if punteggio == 0:
-                continue
-            try:
-                user_info = await context.bot.get_chat(user_id)
-                username_info = user_info.username or user_info.first_name
-            except Exception as e:
-                username_info = f"utente_{user_id}"
-            classifica_text.append(f"{posizione + 1}. @{username_info}: {punteggio} punti")
-        if classifica_text:
-            classifica_text = "\n".join(classifica_text)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🏆 Classifica:\n\n{classifica_text}",
-                message_thread_id=thread_id,
-            )
-            await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
-        else:
-            await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
-    else:
-        await context.bot.send_message(chat_id=chat_id, text="*📊 Nessuna classifica disponibile\\.*", message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+
+    # Ordina e formatta
+    ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
+    lines = []
+    for idx, (user_id, punti) in enumerate(ordinata, start=1):
+        if punti == 0:
+            continue
+        try:
+            info = await context.bot.get_chat(user_id)
+            nome = info.username or info.first_name
+        except:
+            nome = f"utente_{user_id}"
+        lines.append(f"{idx}. @{nome}: {punti} punti")
+
+    if not lines:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*📊 Nessuna classifica disponibile\\.*",
+            message_thread_id=thread_id,
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
+        return
+
+    testo = "🏆 Classifica finale:\n\n" + "\n".join(lines)
+    await context.bot.send_message(chat_id=chat_id, text=testo, message_thread_id=thread_id)
+    await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -449,23 +469,17 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, thread_id = get_chat_id_or_thread(update)
+
     if not await is_admin(update, context):
         await update.message.reply_text("🚫 Solo gli amministratori possono resettare la classifica.")
         return
-    group_id = str(chat_id)
-    file_classifiche = "classifiche.json"
-    if os.path.exists(file_classifiche):
-        with open(file_classifiche, 'r', encoding='utf-8') as f:
-            classifiche = json.load(f)
-        if group_id in classifiche:
-            classifiche[group_id] = {}
-            with open(file_classifiche, 'w', encoding='utf-8') as f:
-                json.dump(classifiche, f, ensure_ascii=False, indent=4)
-            await update.message.reply_text("_🚾 Complimenti hai scartato tutti i punteggi\\._", parse_mode=ParseMode.MARKDOWN_V2)
-        else:
-            await update.message.reply_text("⚠️ Nessuna classifica trovata per il gruppo corrente.")
-    else:
-        await update.message.reply_text("⚠️ Il file delle classifiche non esiste.")
+
+    save_classifica_to_json(chat_id, {})
+
+    await update.message.reply_text(
+        "_🚾 Complimenti hai scartato tutti i punteggi\\._",
+        parse_mode=ParseMode.MARKDOWN_V2
+    )
 
 async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
