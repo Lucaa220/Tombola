@@ -28,15 +28,13 @@ def load_classifica_from_json(group_id: int) -> dict:
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         data = resp.json().get("record", {})
-        # `record` è l’oggetto JSON salvato: un dict { group_id_str: {user_id: punti, …}, … }
         return data.get(str(group_id), {})
     except requests.HTTPError as e:
-        # 404 o altri errori HTTP
         logger.error(f"JSONBin load error (HTTP): {e}")
     except Exception as e:
         logger.error(f"JSONBin load error: {e}")
 
-    return {}
+    return {}  # Restituisce un dizionario vuoto in caso di errore
 
 def save_classifica_to_json(group_id: int, scores: dict) -> None:
     """
@@ -50,7 +48,6 @@ def save_classifica_to_json(group_id: int, scores: dict) -> None:
         "Content-Type": "application/json",
     }
 
-    # 1) Preleva esistente (o crea vuoto)
     try:
         resp = requests.get(url_latest, headers=headers)
         resp.raise_for_status()
@@ -59,15 +56,15 @@ def save_classifica_to_json(group_id: int, scores: dict) -> None:
         logger.warning(f"JSONBin pre-load warning, inizializzo bin vuoto: {e}")
         all_records = {}
 
-    # 2) Aggiorna solo il gruppo corrente
     all_records[str(group_id)] = scores
 
-    # 3) Salva via PUT (sovrascrive tutto il bin)
     try:
         resp = requests.put(url, headers=headers, json=all_records)
         resp.raise_for_status()
     except Exception as e:
         logger.error(f"JSONBin save error: {e}")
+
+
 
 def update_player_score(group_id: int, user_id: int, points: int) -> None:
     # Scarica il dict solo del gruppo
@@ -274,7 +271,7 @@ class TombolaGame:
                 if tombolino_active and self.tombole_fatte == 1:
                     await context.bot.send_message(
                         chat_id=self.chat_id,
-                        text=(f"*🎉 Primo Tombolino di @{await self._username(user_id)}!*  _Si continua fino alla seconda tombola\\._"),
+                        text=(f"_@{await self._username(user_id)} ha fatto tombola\\._"),
                         parse_mode=ParseMode.MARKDOWN_V2,
                         message_thread_id=self.thread_id
                     )
@@ -283,7 +280,7 @@ class TombolaGame:
                 punti = base // 2 if (tombolino_active and self.tombole_fatte == 2) else base
                 await context.bot.send_message(
                     chat_id=self.chat_id,
-                    text=(f"*🏆 Tombola di @{await self._username(user_id)}!*  _Ha vinto {punti} punti_"),
+                    text=(f"_@{await self._username(user_id)} ha fatto tombolino e la partita è terminata\\._"),
                     parse_mode=ParseMode.MARKDOWN_V2,
                     message_thread_id=self.thread_id
                 )
@@ -294,7 +291,6 @@ class TombolaGame:
         return False  # nessuna tombola, continua
 
     async def check_winner(self, user_id, username, context: ContextTypes.DEFAULT_TYPE):
-        # Preleva i punteggi personalizzati se presenti, altrimenti usa i valori di default
         scores = getattr(self, "custom_scores", {
             "ambo": 5,
             "terno": 10,
@@ -304,28 +300,32 @@ class TombolaGame:
         })
 
         player_cartella = self.players.get(user_id, [])
+        if not player_cartella:
+            logger.warning(f"Nessuna cartella trovata per l'utente {user_id}.")
+            return None
+
         for i, riga in enumerate(player_cartella):
-            # Conta i numeri "segnati" in ogni riga
             matched_numbers = sum(is_marked for is_marked in riga.values())
-            # Se la riga ha 2, 3, 4 o 5 numeri segnati...
             if matched_numbers in [2, 3, 4, 5]:
-                # Mappa il numero di numeri segnati al tipo di premio:
                 prize_type = ['ambo', 'terno', 'quaterna', 'cinquina'][matched_numbers - 2]
                 if self.winners[prize_type] is None:
                     self.winners[prize_type] = user_id
-                    # Assegna i punti usando il valore definito in "scores"
                     points = scores.get(prize_type, 0)
                     self.add_score(user_id, points)
                     asyncio.create_task(self.announce_winner(prize_type.capitalize(), username, context))
                     return prize_type
 
-        # Se il giocatore ha segnato tutti i numeri e non è stata ancora assegnata la tombola
         if all(is_marked for riga in player_cartella for is_marked in riga.values()) and self.winners['tombola'] is None:
             self.winners['tombola'] = user_id
             self.add_score(user_id, scores.get("tombola", 50))
-            self.update_overall_scores()
+            await context.bot.send_message(
+                chat_id=self.chat_id,
+                text=f"_🏆 @{username} ha fatto tombola e la partita è terminata\\!_",
+                parse_mode=ParseMode.MARKDOWN_V2,
+                message_thread_id=self.thread_id
+            )
+            asyncio.create_task(self.update_overall_scores())
             self.stop_game(interrupted=False)
-            asyncio.create_task(self.announce_winner("Tombola", username, context))
             return "tombola e la partita è terminata"
 
         return None
@@ -357,7 +357,8 @@ class TombolaGame:
                 if number in riga:
                     riga[number] = True
                     return True
-        return False
+        logger.warning(f"Numero {number} non trovato nella cartella dell'utente {user_id}.")
+        return False  # Restituisce False se il numero non è stato trovato
 
     def interrupt_game(self):
         if self.game_active:
@@ -425,7 +426,7 @@ class TombolaGame:
         saved_overall_scores = self.overall_scores.copy()
         self.players = {}
         self.numeri_estratti = []
-        self.numeri_tombola = list(range(1, 91)) + [110, 666]
+        self.numeri_tombola = list(range(1, 91)) + [110, 666, 404, 104]
         random.shuffle(self.numeri_tombola)
         self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None, 'tombola': None}
         self.game_active = True
@@ -433,10 +434,7 @@ class TombolaGame:
         self.players_in_game = set()
         self.current_game_scores = {}
         self.overall_scores = saved_overall_scores
-        if self.game_interrupted:
-            print("Gioco resettato. Poiché il gioco è stato interrotto, i punteggi della partita corrente sono stati cancellati.")
         self.game_interrupted = False
-        print("Gioco resettato mantenendo i punteggi generali.")
 
     async def get_username(self, user: Update.effective_user):
         user_id = user.id
