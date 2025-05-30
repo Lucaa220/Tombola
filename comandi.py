@@ -148,82 +148,47 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_name = query.message.chat.title or "Gruppo Sconosciuto"
     escaped_group_name = escape_markdown(group_name, version=2)
 
-    try:
-        chat = await context.bot.get_chat(group_chat_id)
-        if chat.username:
-            group_link = f"https://t.me/{chat.username}"
-        else:
-            group_link = await context.bot.export_chat_invite_link(group_chat_id)
-    except Exception:
-        group_link = None
+    # Recupera il link del gruppo in modo asincrono
+    group_link = await get_group_link(context, group_chat_id)
 
     group_text = f"[{escaped_group_name}]({group_link})" if group_link else escaped_group_name
 
     # Log dell'interazione
     await log_interaction(user_id, username, group_chat_id, query.data, group_name)
 
+    # Gestione della richiesta di unirsi al gioco
     if query.data == 'join_game':
         game = get_game(group_chat_id)
 
-        # Verifica stato della partita
-        if not game.game_active:
-            await query.answer(
-                "🚫 Non ci sono partite in corso. Aspetta che ne inizi una nuova per poterti unire!",
-                show_alert=True
-            )
-            return
-        if game.extraction_started:
-            await query.answer(
-                "🚫 La partita è già iniziata, non puoi unirti ora. Aspetta la prossima partita!",
-                show_alert=True
-            )
-            return
-
-        # Controlla se l'utente è già iscritto
-        if game.players.get(user_id):
+        # Controllo se l'utente è già iscritto
+        if user_id in game.players_in_game:
             await query.answer("Sei già iscritto alla partita!", show_alert=True)
             return
 
-        # Registra username
-        game.usernames[user_id] = user.username or user.full_name
+        # Verifica stato della partita
+        if not game.game_active:
+            await query.answer("🚫 Non ci sono partite in corso. Aspetta che ne inizi una nuova per poterti unire!", show_alert=True)
+            return
+        if game.extraction_started:
+            await query.answer("🚫 La partita è già iniziata, non puoi unirti ora. Aspetta la prossima partita!", show_alert=True)
+            return
 
-        # Aggiungi giocatore e invia cartella
+        # Registra username e aggiungi giocatore
+        game.usernames[user_id] = username
         game.add_player(user_id)
-        cartella = game.players[user_id]
-        formatted_cartella = game.format_cartella(cartella)
-        escaped_cartella = escape_markdown(formatted_cartella, version=2)
-        escaped_username = escape_markdown(username, version=2)
 
-        # Annuncio nel gruppo/thread con MarkdownV2
+        # Invia la cartella in privato
+        await send_cartella_to_user(user_id, game, group_text, context)
+
+        # Annuncio nel gruppo
         await context.bot.send_message(
             chat_id=group_chat_id,
-            text=f"*_👤 @{escaped_username} si è unito alla partita\\!_*",
+            text=f"*_👤 @{escape_markdown(username, version=2)} si è unito alla partita\\!_*",
             message_thread_id=thread_id,
             parse_mode=ParseMode.MARKDOWN_V2
         )
 
-        # Invio cartella in privato con MarkdownV2
-        try:
-            private_text = (
-                f"*🏁 Sei ufficialmente nella partita del gruppo {group_text}, ecco la tua cartella\\:*"
-                f"\n\n{escaped_cartella}"
-            )
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=private_text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                disable_web_page_preview=True
-            )
-        except Exception:
-            await query.answer(
-                "Non riesco a inviarti la cartella in privato. Assicurati di aver avviato una chat con me.",
-                show_alert=True
-            )
-            return
-
-        # Conferma per l'utente nel contesto del callback
-        await query.answer("Cartella inviata in privato!")
-
+    # Gestione di altri comandi
     elif query.data == 'draw_number':
         await estrai(update, context)
         await query.answer("Numero estratto!")
@@ -233,18 +198,51 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Partita interrotta!")
 
     elif query.data == 'mostra_cartella':
-        game = get_game(group_chat_id)
-        if user_id not in game.players:
-            await query.answer("⛔️ Non sei in partita!", show_alert=True)
-        else:
-            cartella = game.players[user_id]
-            formatted_cartella = game.format_cartella(cartella)
-            alert_text = f"La tua cartella:\n\n{formatted_cartella}"
-            if len(alert_text) > 200:
-                alert_text = alert_text[:197] + "..."
-            await query.answer(text=alert_text, show_alert=True)
+        await show_cartella(user_id, game, query)
+
     else:
         await query.answer()
+
+async def get_group_link(context, group_chat_id):
+    """Recupera il link del gruppo in modo asincrono."""
+    try:
+        chat = await context.bot.get_chat(group_chat_id)
+        return f"https://t.me/{chat.username}" if chat.username else await context.bot.export_chat_invite_link(group_chat_id)
+    except Exception:
+        return None
+
+async def send_cartella_to_user(user_id, game, group_text, context):
+    """Invia la cartella al giocatore in privato."""
+    cartella = game.players[user_id]
+    formatted_cartella = game.format_cartella(cartella)
+    escaped_cartella = escape_markdown(formatted_cartella, version=2)
+
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"*🏁 Sei ufficialmente nella partita del gruppo {group_text}, ecco la tua cartella\\:*"
+                 f"\n\n{escaped_cartella}",
+            parse_mode=ParseMode.MARKDOWN_V2,
+            disable_web_page_preview=True
+        )
+    except Exception:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="Non riesco a inviarti la cartella in privato. Assicurati di aver avviato una chat con me.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+async def show_cartella(user_id, game, query):
+    """Mostra la cartella del giocatore."""
+    if user_id not in game.players:
+        await query.answer("⛔️ Non sei in partita!", show_alert=True)
+    else:
+        cartella = game.players[user_id]
+        formatted_cartella = game.format_cartella(cartella)
+        alert_text = f"La tua cartella:\n\n{formatted_cartella}"
+        if len(alert_text) > 200:
+            alert_text = alert_text[:197] + "..."
+        await query.answer(text=alert_text, show_alert=True)
 
 async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Solo admin possono estrarre
@@ -388,7 +386,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         # Modalità manuale: esegue subito fino a fine
         await extract_loop()
-        
+
 async def auto_extraction_loop(update, context, game, chat_id, thread_id, extract_and_update_func):
     while game.game_active and not game.game_interrupted:
         extracted = await extract_and_update_func()
