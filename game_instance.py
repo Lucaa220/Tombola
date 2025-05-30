@@ -2,7 +2,7 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
-from variabili import chat_id_global, thread_id_global, JSONBIN_API_KEY
+from variabili import chat_id_global, thread_id_global, JSONBIN_API_KEY, CLASSIFICA_BIN_ID, load_group_settings, premi_default
 import logging
 import json
 import os
@@ -12,58 +12,71 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_classifica_from_json(group_id: int):
-    # Il bin ID è ora una costante, non viene passato come argomento
-    CLASSIFICHE_BIN_ID = "6657963fe41b4d34e4029267" # Il tuo Bin ID per classifiche.json
+JSONBIN_BASE_URL = "https://api.jsonbin.io/v3/b"
+
+def load_classifica_from_json(group_id: int) -> dict:
+    """
+    Carica tutte le classifiche dal bin e restituisce solo quella per `group_id`.
+    Se il bin non esiste o c'è un errore, restituisce {}.
+    """
+    url = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}/latest"
     headers = {
         "X-Master-Key": JSONBIN_API_KEY,
-        "Content-Type": "application/json"
     }
-    url = f"https://api.jsonbin.io/v3/b/{CLASSIFICHE_BIN_ID}/latest"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        all_scores = response.json()
-        return all_scores.get(str(group_id), {}) # Restituisce solo i punteggi per il gruppo specifico
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Errore durante il caricamento della classifica da JSONBin.io: {e}")
-        return {} # Restituisce un dizionario vuoto in caso di errore
 
-# Modificato: per salvare su JSONBin.io
-def save_classifica_to_json(group_id: int, scores: dict):
-    # Il bin ID è ora una costante, non viene passato come argomento
-    CLASSIFICHE_BIN_ID = "6657963fe41b4d34e4029267" # Il tuo Bin ID per classifiche.json
+    try:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json().get("record", {})
+        # `record` è l’oggetto JSON salvato: un dict { group_id_str: {user_id: punti, …}, … }
+        return data.get(str(group_id), {})
+    except requests.HTTPError as e:
+        # 404 o altri errori HTTP
+        logger.error(f"JSONBin load error (HTTP): {e}")
+    except Exception as e:
+        logger.error(f"JSONBin load error: {e}")
+
+    return {}
+
+def save_classifica_to_json(group_id: int, scores: dict) -> None:
+    """
+    Carica il contenuto attuale del bin, aggiorna la voce per `group_id` e riscrive il record.
+    Se il bin non esiste, lo inizializza.
+    """
+    url_latest = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}/latest"
+    url = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}"
     headers = {
         "X-Master-Key": JSONBIN_API_KEY,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    url = f"https://api.jsonbin.io/v3/b/{CLASSIFICHE_BIN_ID}"
 
-    # Carica tutte le classifiche esistenti per aggiornare solo quella specifica
+    # 1) Preleva esistente (o crea vuoto)
     try:
-        response = requests.get(f"{url}/latest", headers=headers)
-        response.raise_for_status()
-        all_scores = response.json()
-    except requests.exceptions.RequestException as e:
-        logger.warning(f"Impossibile caricare le classifiche esistenti da JSONBin.io, inizializzazione: {e}")
-        all_scores = {} # Inizializza se non ci sono classifiche o c'è un errore
+        resp = requests.get(url_latest, headers=headers)
+        resp.raise_for_status()
+        all_records = resp.json().get("record", {})
+    except Exception as e:
+        logger.warning(f"JSONBin pre-load warning, inizializzo bin vuoto: {e}")
+        all_records = {}
 
-    all_scores[str(group_id)] = scores # Aggiorna i punteggi per il gruppo specifico
+    # 2) Aggiorna solo il gruppo corrente
+    all_records[str(group_id)] = scores
 
+    # 3) Salva via PUT (sovrascrive tutto il bin)
     try:
-        response = requests.put(url, headers=headers, json=all_scores)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Errore durante il salvataggio delle classifiche su JSONBin.io: {e}")
+        resp = requests.put(url, headers=headers, json=all_records)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error(f"JSONBin save error: {e}")
 
-def update_player_score(group_id: int, user_id: int, score: int) -> None:
+def update_player_score(group_id: int, user_id: int, points: int) -> None:
+    # Scarica il dict solo del gruppo
     classifica = load_classifica_from_json(group_id)
 
-    if str(user_id) in classifica:
-        classifica[str(user_id)] += score
-    else:
-        classifica[str(user_id)] = score
+    # Aggiorna il punteggio
+    classifica[str(user_id)] = classifica.get(str(user_id), 0) + points
 
+    # Salva TUTTO il bin aggiornando solo questo gruppo
     save_classifica_to_json(group_id, classifica)
 
 
@@ -72,7 +85,7 @@ class TombolaGame:
         self.players = {}  # Giocatori e le loro cartelle
         self.numeri_estratti = []  # Numeri già estratti
         # Include numeri da 1 a 90, bonus 110 e malus 666
-        self.numeri_tombola = list(range(1, 91)) + [110, 666]
+        self.numeri_tombola = list(range(1, 91)) + [110, 666, 104, 404]
         random.shuffle(self.numeri_tombola)  # Mischia i numeri
         self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None, 'tombola': None}  # Per tracciare le vittorie
         self.game_active = True  # Stato del gioco
@@ -84,6 +97,7 @@ class TombolaGame:
         self.game_interrupted = False
         self.chat_id = None
         self.thread_id = None  # Per gestire i thread dei messaggi
+        self.tombole_fatte = 0
 
     def set_chat_id(self, chat_id):
         self.chat_id = chat_id
@@ -118,65 +132,168 @@ class TombolaGame:
         self.extraction_started = True
 
     async def draw_number(self, context: ContextTypes.DEFAULT_TYPE = None):
-        # Carica le impostazioni di gruppo per verificare se bonus/malus sono abilitati (default True)
-        from variabili import load_group_settings  # Import locale per evitare cicli di importazione
-        group_settings = load_group_settings()
-        bonus_malus_enabled = group_settings.get(str(self.chat_id), {}).get("bonus_malus", True)
+        # 1) Prendi lo stato di tutti i bonus/malus
+        group_conf = load_group_settings().get(str(self.chat_id), {})
+        feature_states = group_conf.get("bonus_malus_settings", {
+            "104": True,
+            "110": True,
+            "666": True,
+            "404": True,
+            "Tombolino": True
+        })
 
-        # Se i bonus/malus sono disattivati, ignoriamo i numeri 110 e 666
+        # 2) Estrai il prossimo valore valido
         number = None
         while self.numeri_tombola and self.game_active:
-            potential = self.numeri_tombola.pop(0)
-            if not bonus_malus_enabled and potential in [110, 666]:
+            candidate = self.numeri_tombola.pop(0)
+            key = str(candidate) if str(candidate) in feature_states else None
+
+            # Se è “Tombolino” lo gestirai altrove, qui lasciamo passare
+            if candidate == "Tombolino":
+                key = "Tombolino"
+
+            # Se è una feature definita e disabilitata, salta
+            if key and not feature_states.get(key, True):
                 continue
-            number = potential
+
+            # Altrimenti lo prendi
+            number = candidate
             break
 
-        if number is not None:
-            self.numeri_estratti.append(number)
-            # Gestione bonus e malus: questi blocchi verranno eseguiti solo se i bonus/malus sono abilitati
-            if number == 110 and bonus_malus_enabled:
-                if self.players_in_game:
-                    random_player = random.choice(list(self.players_in_game))
-                    bonus_points = random.randint(1, 49)
-                    self.add_score(random_player, bonus_points)
-                    if context is not None:
-                        try:
-                            chat_member = await context.bot.get_chat_member(self.chat_id, random_player)
-                            username = chat_member.user.username or chat_member.user.first_name or str(random_player)
-                        except Exception:
-                            username = str(random_player)
-                        await context.bot.send_message(
-                            chat_id=self.chat_id,
-                            text=f"*🧑‍🎓 Numero 110 estratto\\!*\n\n_🆒 @{username} ha guadagnato {bonus_points} punti_",
-                            message_thread_id=self.thread_id,
-                            parse_mode=ParseMode.MARKDOWN_V2
-                        )
-                else:
-                    logger.warning("Numero 110 estratto ma non ci sono giocatori in partita.")
-            elif number == 666 and bonus_malus_enabled:
-                if self.players_in_game:
-                    random_player = random.choice(list(self.players_in_game))
-                    malus_points = random.randint(1, 49)
-                    self.add_score(random_player, -malus_points)
-                    if context is not None:
-                        try:
-                            chat_member = await context.bot.get_chat_member(self.chat_id, random_player)
-                            username = chat_member.user.username or chat_member.user.first_name or str(random_player)
-                        except Exception:
-                            username = str(random_player)
-                        await context.bot.send_message(
-                            chat_id=self.chat_id,
-                            text=f"*🛐 Numero 666 estratto\\!*\n\n_🆒 @{username} ha perso {malus_points} punti_",
-                            message_thread_id=self.thread_id,
-                            parse_mode=ParseMode.MARKDOWN_V2
-                        )
-                else:
-                    logger.warning("Numero 666 estratto ma non ci sono giocatori in partita.")
-            return number
-        return None
+        if number is None:
+            return None
 
-    def check_winner(self, user_id, username, context: ContextTypes.DEFAULT_TYPE):
+        # 3) Registra l’estratto
+        self.numeri_estratti.append(number)
+
+        # 4) Applica logica speciali solo se abilitati
+        if number == 110 and feature_states.get("110", True):
+            if self.players_in_game:
+                player = random.choice(list(self.players_in_game))
+                punti = random.randint(1, 49)
+                self.add_score(player, punti)
+                if context:
+                    try:
+                        member = await context.bot.get_chat_member(self.chat_id, player)
+                        uname = member.user.username or member.user.first_name or str(player)
+                    except:
+                        uname = str(player)
+                    await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=(
+                            f"*🧑‍🎓 Numero 110 estratto\\!*\n\n"
+                            f"_🆒 @{uname} ha guadagnato {punti} punti_"
+                        ),
+                        message_thread_id=self.thread_id,
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+            else:
+                logger.warning("110 estratto ma non ci sono giocatori.")
+        
+        elif number == 666 and feature_states.get("666", True):
+            if self.players_in_game:
+                player = random.choice(list(self.players_in_game))
+                punti = random.randint(1, 49)
+                self.add_score(player, -punti)
+                if context:
+                    try:
+                        member = await context.bot.get_chat_member(self.chat_id, player)
+                        uname = member.user.username or member.user.first_name or str(player)
+                    except:
+                        uname = str(player)
+                    await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=(
+                            f"*🛐 Numero 666 estratto\\!*\n\n"
+                            f"_🆒 @{uname} ha perso {punti} punti_"
+                        ),
+                        message_thread_id=self.thread_id,
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+            else:
+                logger.warning("666 estratto ma non ci sono giocatori.")
+
+        elif number == 104 and feature_states.get("104", True):
+            if self.players_in_game:
+                player = random.choice(list(self.players_in_game))
+                punti = random.randint(1, 49)
+                self.add_score(player, punti)
+                if context:
+                    try:
+                        member = await context.bot.get_chat_member(self.chat_id, player)
+                        uname = member.user.username or member.user.first_name or str(player)
+                    except:
+                        uname = str(player)
+                    await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=(
+                            f"*♿️ Numero 104 estratto\\!*\n\n"
+                            f"_🆒 @{uname} ha guadagnato {punti} punti_"
+                        ),
+                        message_thread_id=self.thread_id,
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+            else:
+                logger.warning("104 estratto ma non ci sono giocatori.")    
+
+        elif number == 404 and feature_states.get("404", True):
+            if self.players_in_game:
+                player = random.choice(list(self.players_in_game))
+                punti = random.randint(1, 49)
+                self.add_score(player, -punti)
+                if context:
+                    try:
+                        member = await context.bot.get_chat_member(self.chat_id, player)
+                        uname = member.user.username or member.user.first_name or str(player)
+                    except:
+                        uname = str(player)
+                    await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=(
+                            f"*🆘 Numero 404 estratto\\!*\n\n"
+                            f"_🆒 @{uname} ha perso {punti} punti_"
+                        ),
+                        message_thread_id=self.thread_id,
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+            else:
+                logger.warning("404 estratto ma non ci sono giocatori.")
+        
+        return number
+    
+    async def check_for_tombola(self, context: ContextTypes.DEFAULT_TYPE):
+        group_conf = load_group_settings().get(str(self.chat_id), {})
+        tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
+        premi = group_conf.get("premi", premi_default)
+
+        for user_id, cartella in self.players.items():
+            if cartella.is_complete(self.numeri_estratti):
+                self.tombole_fatte += 1
+
+                base = premi.get("tombola", premi_default["tombola"])
+                if tombolino_active and self.tombole_fatte == 1:
+                    await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=(f"*🎉 Primo Tombolino di @{await self._username(user_id)}!*  _Si continua fino alla seconda tombola\\._"),
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                        message_thread_id=self.thread_id
+                    )
+                    return False  # continua il gioco
+
+                punti = base // 2 if (tombolino_active and self.tombole_fatte == 2) else base
+                await context.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=(f"*🏆 Tombola di @{await self._username(user_id)}!*  _Ha vinto {punti} punti_"),
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=self.thread_id
+                )
+                self.add_score(user_id, punti)
+                self.game_active = False
+                return True  # partita finita
+
+        return False  # nessuna tombola, continua
+
+    async def check_winner(self, user_id, username, context: ContextTypes.DEFAULT_TYPE):
         # Preleva i punteggi personalizzati se presenti, altrimenti usa i valori di default
         scores = getattr(self, "custom_scores", {
             "ambo": 5,
@@ -250,21 +367,24 @@ class TombolaGame:
             print("Nessun gioco attivo da interrompere.")
 
     def update_overall_scores(self):
+        """
+        Per ogni user_id in self.current_game_scores,
+        incrementa il suo punteggio sul bin usando update_player_score,
+        poi ricarica self.overall_scores e resetta current_game_scores.
+        """
         if self.game_interrupted or not self.chat_id:
             logger.warning("Partita interrotta o chat_id non impostato, punteggi non aggiornati.")
             return
 
-        all_scores = load_classifica_from_json("classifiche.json")
-        group_scores = all_scores.get(str(self.chat_id), {})
+        # Usa l'helper che aggiorna un singolo utente sul bin
+        for user_id, punti in self.current_game_scores.items():
+            update_player_score(self.chat_id, user_id, punti)
 
-        for user_id, score in self.current_game_scores.items():
-            user_id_str = str(user_id)
-            group_scores[user_id_str] = group_scores.get(user_id_str, 0) + score
+        # Ricarica i punteggi complessivi dal bin
+        # (questa chiamata ti restituisce solo il dict {user_id: punti} per questo gruppo)
+        self.overall_scores = load_classifica_from_json(self.chat_id)
 
-        all_scores[str(self.chat_id)] = group_scores
-        save_classifica_to_json("classifiche.json", all_scores)
-
-        self.overall_scores = group_scores
+        # Pulisci i punteggi di partita
         self.current_game_scores.clear()
 
     def save_scores_to_file(self):
