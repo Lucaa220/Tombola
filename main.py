@@ -8,6 +8,7 @@ import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
 import json
+import argparse
 
 if os.name == 'nt':
     from asyncio import WindowsProactorEventLoopPolicy
@@ -24,12 +25,17 @@ else:
 
 # Importa i tuoi moduli locali
 from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole  # Assicurati che questi siano corretti
-from game_instance import get_game  # Assicurati che questo sia corretto
-from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added  # Assicurati che questi siano corretti
+from game_instance import get_game, load_classifica_from_json
+from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added, premi_default
 from log import send_logs_by_group # Assicurati che questi siano corretti
 
 _chat_info_cache: dict[int, dict] = {}
 _cache_ttl = 3600
+
+load_dotenv()
+TOKEN = os.getenv('TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g. https://domain.com/webhook
+PORT = int(os.getenv('PORT', '8443'))
 
 async def get_cached_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     now = asyncio.get_event_loop().time()
@@ -47,8 +53,6 @@ async def get_cached_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Dizionario premi di default
-premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
 
 # Funzione per l'estrazione automatica
 async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
@@ -140,20 +144,38 @@ async def show_premi_menu(query, chat_id, settings):
             raise e
 
 async def show_bonus_menu(query, chat_id, settings):
-    bonus_enabled = settings.get(str(chat_id), {}).get("bonus_malus", True)  # Default True se non presente
-    keyboard = [
-        [InlineKeyboardButton(f"Attivo {'✅' if bonus_enabled else ''}", callback_data='set_bonus_on'),
-         InlineKeyboardButton(f"Disattivo {'✅' if not bonus_enabled else ''}", callback_data='set_bonus_off')],
-        [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
-    ]
+    all_features = {
+        "104": "104",
+        "110": "110",
+        "666": "666",
+        "404": "404",
+        "Tombolino": "Tombolino"
+    }
+
+    group_conf = settings.setdefault(str(chat_id), {})
+    feature_states = group_conf.setdefault(
+        "bonus_malus_settings",
+        {key: True for key in all_features}
+    )
+
+    keyboard = []
+    for key, label in all_features.items():
+        active = feature_states.get(key, True)
+        keyboard.append([
+            InlineKeyboardButton("Attivo ✅" if active else "Attivo", callback_data=f"toggle_feature_{key}_active"),
+            InlineKeyboardButton(label, callback_data="none"),
+            InlineKeyboardButton("Inattivo ❌" if not active else "Inattivo", callback_data=f"toggle_feature_{key}_inactive")
+        ])
+
+    keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("_🆗 Questo è il posto giusto se vuoi mettere un po’ di pepe alle tue partite, attiva i bonus e i malus se vuoi che "
-            "la classifica sia un pochino più combattuta, se invece sei un tradizionalista, tieni l'opzione disattivata\\:_")
-    try:
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
-    except Exception as e:
-        if "Message is not modified" not in str(e):
-            raise e
+
+    text = (
+        "_🆗 Qui puoi attivare o disattivare ogni bonus/malus singolarmente: "
+        "tocca il pulsante per cambiare lo stato\\.\n\n"
+        "Attivo: ✅ · Disattivo: ❌\\:_"
+    )
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
 
 async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -202,12 +224,16 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings[str(chat_id)]["premi"] = premi_default.copy()
         save_group_settings(settings)
         await show_premi_menu(query, chat_id, settings)
-    elif action == 'set_bonus_on':
-        settings[str(chat_id)]["bonus_malus"] = True
-        save_group_settings(settings)
-        await show_bonus_menu(query, chat_id, settings)
-    elif action == 'set_bonus_off':
-        settings[str(chat_id)]["bonus_malus"] = False
+    elif action.startswith("toggle_feature_"):
+        parts = action.split("_")
+        feature_key = parts[2]
+        state = parts[3]
+        logger.info(f"feature_key: {feature_key}, state: {state}")
+        fm = settings.setdefault(str(chat_id), {}).setdefault("bonus_malus_settings", {})
+        if state == "active":
+            fm[feature_key] = True
+        elif state == "inactive":
+            fm[feature_key] = False
         save_group_settings(settings)
         await show_bonus_menu(query, chat_id, settings)
     elif action == 'back_to_main_menu':
@@ -251,38 +277,33 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Solo gli amministratori possono vedere la classifica.")
         return
 
-    file_classifiche = "classifiche.json"
-    if not os.path.exists(file_classifiche):
-        await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile", message_thread_id=thread_id)
+    # Carica dal bin
+    classifica_gruppo = load_classifica_from_json(chat_id)
+
+    if not classifica_gruppo:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="📊 Nessuna classifica disponibile.",
+            message_thread_id=thread_id
+        )
         return
 
-    try:
-        with open(file_classifiche, "r", encoding="utf-8") as f:
-            classifiche = json.load(f)
-    except json.JSONDecodeError:
-        logger.error(f"Errore nella decodifica del file JSON delle classifiche.")
-        await context.bot.send_message(chat_id=chat_id, text="⚠️ Errore nel leggere il file della classifica.", message_thread_id=thread_id)
-        return
+    # Ordina e formatta
+    ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
+    lines = []
+    for idx, (user_id, punti) in enumerate(ordinata, start=1):
+        if punti == 0:
+            continue
+        try:
+            info = await context.bot.get_chat(user_id)
+            nome = info.username or info.first_name
+        except:
+            nome = f"utente_{user_id}"
+        lines.append(f"{idx}. @{nome}: {punti} punti")
 
-    group_id = str(chat_id)
-    if group_id in classifiche:
-        classifica_gruppo = classifiche[group_id]
-        classifica_ordinata = sorted(classifica_gruppo.items(), key=lambda item: item[1], reverse=True)
-        classifica_text = []
-        for posizione, (user_id, punteggio) in enumerate(classifica_ordinata):
-            if punteggio == 0:
-                continue
-            try:
-                user_info = await context.bot.get_chat(user_id)
-                username = user_info.username or user_info.first_name
-            except Exception:
-                username = f"utente_{user_id}"
-            classifica_text.append(f"{posizione + 1}. @{username}: {punteggio} punti")
-        if classifica_text:
-            classifica_text = "\n".join(classifica_text)
-            await context.bot.send_message(chat_id=chat_id, text=f"🏆 Classifica:\n\n{classifica_text}", message_thread_id=thread_id)
-        else:
-            await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile.", message_thread_id=thread_id)
+    if lines:
+        testo = "🏆 Classifica:\n\n" + "\n".join(lines)
+        await context.bot.send_message(chat_id=chat_id, text=testo, message_thread_id=thread_id)
     else:
         await context.bot.send_message(chat_id=chat_id, text="📊 Nessuna classifica disponibile.", message_thread_id=thread_id)
 
@@ -290,14 +311,23 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     action = query.data
     user = query.from_user
-    username = user.username if user.username else user.full_name # Usa username se disponibile, altrimenti il nome completo
+    username = user.username or user.full_name
     user_id = user.id
 
     logger.info(f"Callback data '{action}' ricevuto da utente: {username} (ID: {user_id})")
-    
-    if action.startswith('set_') or action in ['menu_estrazione', 'menu_admin', 'menu_premi', 'menu_bonus', 'back_to_main_menu', 'close_settings', 'reset_premi']:
+
+    # Tutti i comandi di configurazione settings vanno in settings_button
+    settings_actions = (
+        action.startswith('menu_'),
+        action.startswith('set_'),
+        action.startswith('toggle_feature_'),
+        action in ('back_to_main_menu', 'close_settings', 'reset_premi')
+    )
+
+    if any(settings_actions):
         await settings_button(update, context)
     else:
+        # Tutto il resto (draw_number, mostra_cartella, bonus/malus specifici, ecc.)
         await button(update, context)
 
 async def health_check(request):
@@ -337,7 +367,7 @@ async def main():
     global app, PORT
     load_dotenv()
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g. https://domain.com/webhook
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL')
     PORT = int(os.getenv('PORT', '8443'))
 
     # Istanzia bot
@@ -345,7 +375,7 @@ async def main():
     app = builder.build()
 
     # Aggiungi handler
-    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('start', start_game))
     app.add_handler(CommandHandler('trombola', start_game))
     app.add_handler(CommandHandler('estrai', estrai))
     app.add_handler(CommandHandler('stop', stop_game))
