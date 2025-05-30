@@ -8,34 +8,26 @@ import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
 import json
-import argparse
 
-if os.name == 'nt':
-    from asyncio import WindowsProactorEventLoopPolicy
-    asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
-    logging.info("Using Windows ProactorEventLoop")
-else:
-    try:
-        import uvloop
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-        logging.info("Using uvloop EventLoopPolicy")
-    except ImportError:
-        logging.info("uvloop non disponibile, uso asyncio di default")
-
-
-# Importa i tuoi moduli locali
-from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole  # Assicurati che questi siano corretti
-from game_instance import get_game, load_classifica_from_json
-from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added, premi_default
-from log import send_logs_by_group # Assicurati che questi siano corretti
-
-_chat_info_cache: dict[int, dict] = {}
-_cache_ttl = 3600
-
+# Configurazione dell'ambiente
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g. https://domain.com/webhook
 PORT = int(os.getenv('PORT', '8443'))
+
+# Impostazioni logger
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Cache per le informazioni della chat
+_chat_info_cache: dict[int, dict] = {}
+_cache_ttl = 3600
+
+# Importa i tuoi moduli locali
+from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole
+from game_instance import get_game, load_classifica_from_json
+from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added, premi_default
+from log import send_logs_by_group
 
 async def get_cached_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     now = asyncio.get_event_loop().time()
@@ -48,11 +40,6 @@ async def get_cached_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
         return info
     except Exception:
         return None
-
-# Impostazioni logger
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
 
 # Funzione per l'estrazione automatica
 async def auto_extract(context: ContextTypes.DEFAULT_TYPE):
@@ -95,6 +82,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
 
+# Funzioni per mostrare i vari menu
 async def show_extraction_menu(query, chat_id, settings):
     current_mode = settings.get(str(chat_id), {}).get('extraction_mode', 'manual')
     keyboard = [
@@ -375,15 +363,15 @@ async def main():
     app = builder.build()
 
     # Aggiungi handler
-    app.add_handler(CommandHandler('start', start_game))
+    app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('trombola', start_game))
     app.add_handler(CommandHandler('estrai', estrai))
     app.add_handler(CommandHandler('stop', stop_game))
     app.add_handler(CommandHandler('impostami', settings_command))
     app.add_handler(CommandHandler('trombolatori', numero_giocatori))
-    app.add_handler(CommandHandler('classifica', classifica))
-    app.add_handler(CommandHandler('azzera', reset_classifica := settings_command))
-    app.add_handler(CommandHandler('regole', regole))
+    app.add_handler(CommandHandler('classifiga', classifica))
+    app.add_handler(CommandHandler('azzera', reset_classifica))
+    app.add_handler(CommandHandler('regolo', regole))
     app.add_handler(CommandHandler('trova', find_group))
     app.add_handler(CommandHandler('log', send_logs_by_group))
 
@@ -395,12 +383,4 @@ async def main():
 
     # Imposta webhook Telegram
     await app.initialize()
-    await app.bot.set_webhook(WEBHOOK_URL)
-    await app.start()
-    logger.info(f"Webhook impostato su {WEBHOOK_URL}")
-
-    # Avvia webserver e self-ping
-    await asyncio.gather(start_webserver(), self_ping())
-
-if __name__ == '__main__':
-    asyncio.run(main())
+    await app.bot
