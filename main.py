@@ -382,7 +382,12 @@ async def main() -> None:
     application.add_handler(CommandHandler('trova', find_group))
     application.add_handler(CommandHandler('log', send_logs_by_group))
 
-    application.add_handler(CallbackQueryHandler(settings_button, pattern=r'^(menu_|set_|back_to_main_menu|close_settings|reset_premi)'))
+    application.add_handler(
+        CallbackQueryHandler(
+            settings_button,
+            pattern=r'^(menu_|set_|toggle_feature_|back_to_main_menu|close_settings|reset_premi)'
+        )
+    )
     application.add_handler(CallbackQueryHandler(button))
 
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
