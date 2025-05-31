@@ -383,4 +383,4 @@ async def main():
 
     # Imposta webhook Telegram
     await app.initialize()
-    await app.bot
+    await app.bot.start_polling()  # Aggiunto per avviare il polling
