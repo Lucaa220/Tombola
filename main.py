@@ -318,69 +318,89 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
         # Tutto il resto (draw_number, mostra_cartella, bonus/malus specifici, ecc.)
         await button(update, context)
 
-async def health_check(request):
+async def health_check(request: web.Request) -> web.Response:
+    return web.Response(text="OK")
+
+
+async def handle_webhook(request: web.Request) -> web.Response:
     try:
-        me = await app.bot.get_me()
-        return web.Response(text=f"Bot @{me.username} attivo!")
+        data = await request.json()
     except Exception as e:
-        logger.error(f"Health check fallito: {e}")
-        return web.Response(status=500, text="Bot non disponibile")
+        logger.error(f"Errore nel parse del JSON: {e}")
+        return web.Response(status=400, text="Invalid JSON")
 
-async def handle_webhook(request):
-    data = await request.json()
-    update = Update.de_json(data, app.bot)
-    asyncio.create_task(app.process_update(update))
-    return web.Response(text='OK')
+    # Converte il JSON in un oggetto Update di python-telegram-bot
+    update = Update.de_json(data, application.bot)
 
-async def self_ping():
-    while True:
-        await asyncio.sleep(14 * 60)
-        try:
-            await app.bot.get_updates(offset=-1, timeout=1)
-        except Exception as e:
-            logger.error(f"Self-ping fallito: {e}")
+    # Lanciato come task separato per non bloccare subito la risposta HTTP
+    asyncio.create_task(application.process_update(update))
 
-async def start_webserver():
-    webapp = web.Application()
-    webapp.router.add_get('/', health_check)
-    webapp.router.add_get('/health', health_check)
-    webapp.router.add_post('/webhook', handle_webhook)
-    runner = web.AppRunner(webapp)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
-    await site.start()
-    logger.info(f"Webserver avviato su porta {PORT}")
+    return web.Response(text="OK")
 
-async def main():
-    global app, PORT
+
+async def start_webserver() -> None:
     load_dotenv()
-    TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+    # Render (oppure tu) imposta la variabile d'ambiente PORT al valore che serve (es. 8443)
     PORT = int(os.getenv('PORT', '8443'))
 
-    # Istanzia bot
-    builder = Application.builder().token(TOKEN)
-    app = builder.build()
+    webapp = web.Application()
+    webapp.router.add_get('/', health_check)        # root → health
+    webapp.router.add_get('/health', health_check)  # health check endpoint
+    webapp.router.add_post('/webhook', handle_webhook)
 
-    # Aggiungi handler
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(CommandHandler('trombola', start_game))
-    app.add_handler(CommandHandler('estrai', estrai))
-    app.add_handler(CommandHandler('stop', stop_game))
-    app.add_handler(CommandHandler('impostami', settings_command))
-    app.add_handler(CommandHandler('trombolatori', numero_giocatori))
-    app.add_handler(CommandHandler('classifiga', classifica))
-    app.add_handler(CommandHandler('azzera', reset_classifica))
-    app.add_handler(CommandHandler('regolo', regole))
-    app.add_handler(CommandHandler('trova', find_group))
-    app.add_handler(CommandHandler('log', send_logs_by_group))
+    runner = web.AppRunner(webapp)
+    await runner.setup()
 
-    # CallbackQuery: settings prima, poi button
-    app.add_handler(CallbackQueryHandler(settings_button, pattern='^(menu_|set_|back_to_main_menu|close_settings|reset_premi)'))
-    app.add_handler(CallbackQueryHandler(button))
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
 
-    app.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+    logger.info(f"Webserver avviato su 0.0.0.0:{PORT}")
 
-    # Imposta webhook Telegram
-    await app.initialize()
-    await app.bot.start_polling()  # Aggiunto per avviare il polling
+
+async def main() -> None:
+    load_dotenv()
+    TOKEN = os.getenv('TOKEN')
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # es. "https://<tuo-servizio>.onrender.com/webhook"
+
+    if not TOKEN or not WEBHOOK_URL:
+        logger.error("Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
+        return
+
+    # Creazione dell’Application (builder)
+    global application
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('trombola', start_game))
+    application.add_handler(CommandHandler('estrai', estrai))
+    application.add_handler(CommandHandler('stop', stop_game))
+    application.add_handler(CommandHandler('impostami', settings_command))
+    application.add_handler(CommandHandler('trombolatori', numero_giocatori))
+    application.add_handler(CommandHandler('classifiga', classifica))
+    application.add_handler(CommandHandler('azzera', reset_classifica))
+    application.add_handler(CommandHandler('regolo', regole))
+    application.add_handler(CommandHandler('trova', find_group))
+    application.add_handler(CommandHandler('log', send_logs_by_group))
+
+    application.add_handler(CallbackQueryHandler(settings_button, pattern=r'^(menu_|set_|back_to_main_menu|close_settings|reset_premi)'))
+    application.add_handler(CallbackQueryHandler(button))
+
+    application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+
+    # Inizializza il bot (scarica offset, settaggi interni, ecc.)
+    await application.initialize()
+
+    # Imposta il webhook su Telegram (fa la chiamata a setWebhook)
+    await application.bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook impostato su: {WEBHOOK_URL}")
+
+    # Avvia il webserver aiohttp in background (apre socket su PORT)
+    await start_webserver()
+
+    # Mantieni il processo vivo (non terminare main)
+    # Questo asyncio.Event rimarrà in attesa infinita, tenendo il container vivo
+    await asyncio.Event().wait()
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
