@@ -72,6 +72,57 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    if context.args:
+        command_argument = context.args[0]
+        if command_argument.startswith("join_game_"):
+            try:
+                group_id = int(command_argument.split("_", 2)[2])
+            except Exception as e:
+                await update.message.reply_text("Parametro non valido.")
+                return
+            # Recupera info del gruppo per ottenere nome e link
+            try:
+                chat = await context.bot.get_chat(group_id)
+                group_name = chat.title or "Gruppo Sconosciuto"
+                if chat.username:
+                    group_link = f"https://t.me/{chat.username}"
+                else:
+                    group_link = await context.bot.export_chat_invite_link(group_id)
+            except Exception as e:
+                group_name = f"con ID {group_id}"
+                group_link = None
+            group_text = f"[{group_name}]({group_link})" if group_link else group_name
+
+            game = get_game(group_id)
+            if not game.game_active:
+                await update.message.reply_text("🚫 Non ci sono partite in corso in questo gruppo.")
+                return
+            if game.extraction_started:
+                await update.message.reply_text("🚫 La partita è già iniziata, non puoi unirti ora. Aspetta la prossima partita!")
+                return
+
+            # Se l'utente è già iscritto, non invio alcun messaggio
+            if game.players.get(user_id):
+                return
+            else:
+                if game.add_player(user_id):
+                    if update.effective_user.username:
+                       game.usernames[user_id] = update.effective_user.username
+                    else:
+                      game.usernames[user_id] = update.effective_user.full_name
+
+                    cartella = game.players[user_id]
+                    formatted_cartella = game.format_cartella(cartella)
+                    await context.bot.send_message(
+                        chat_id=group_id,
+                        text=f"*🏁 Sei ufficialmente nella partita del gruppo {group_text}, ecco la tua cartella\\:*\n\n{formatted_cartella}",
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                        disable_web_page_preview=True
+                    )
+                else:
+                    await update.message.reply_text("🔜 Non puoi unirti alla partita ora.")
+            return
+
     group_link = "https://t.me/monopolygoscambioitailtopcontest"
     nickname = update.effective_user.full_name or update.effective_user.username
     escaped_nickname = escape_markdown(nickname, version=2)
@@ -101,14 +152,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_link = await get_group_link(context, group_chat_id)
 
     group_text = f"[{escaped_group_name}]({group_link})" if group_link else escaped_group_name
+    game = get_game(group_chat_id)
 
-    # Log dell'interazione
     await log_interaction(user_id, username, group_chat_id, query.data, group_name)
 
     # Gestione della richiesta di unirsi al gioco
     if query.data == 'join_game':
-        game = get_game(group_chat_id)
-
         # Controllo se l'utente è già iscritto
         if user_id in game.players_in_game:
             await query.answer("Sei già iscritto alla partita!", show_alert=True)
@@ -136,19 +185,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_thread_id=thread_id,
             parse_mode=ParseMode.MARKDOWN_V2
         )
+        return
 
     # Gestione di altri comandi
     elif query.data == 'draw_number':
         await estrai(update, context)
         await query.answer("Numero estratto!")
+        return
 
     elif query.data == 'stop_game':
         await stop_game(update, context)
         await query.answer("Partita interrotta!")
+        return
 
     elif query.data == 'mostra_cartella':
         await show_cartella(user_id, game, query)
-
+        return
+    
     else:
         await query.answer()
 
