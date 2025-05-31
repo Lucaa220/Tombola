@@ -152,7 +152,7 @@ async def show_bonus_menu(query, chat_id, settings):
         keyboard.append([
             InlineKeyboardButton("Attivo ✅" if active else "Attivo", callback_data=f"toggle_feature_{key}_active"),
             InlineKeyboardButton(label, callback_data="none"),
-            InlineKeyboardButton("Inattivo ❌" if not active else "Inattivo", callback_data=f"toggle_feature_{key}_inactive")
+            InlineKeyboardButton("Non Attivo ❌" if not active else "Non Attivo", callback_data=f"toggle_feature_{key}_inactive")
         ])
 
     keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')])
@@ -161,7 +161,7 @@ async def show_bonus_menu(query, chat_id, settings):
     text = (
         "_🆗 Qui puoi attivare o disattivare ogni bonus/malus singolarmente: "
         "tocca il pulsante per cambiare lo stato\\.\n\n"
-        "Attivo: ✅ · Disattivo: ❌\\:_"
+        "Attivo: ✅ · Non Attivo: ❌\\:_"
     )
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
 
