@@ -268,27 +268,38 @@ class TombolaGame:
                 self.tombole_fatte += 1
 
                 base = premi.get("tombola", premi_default["tombola"])
-                if tombolino_active and self.tombole_fatte == 1:
+
+                if tombolino_active:
+                    if self.tombole_fatte == 1:
+                        await context.bot.send_message(
+                            chat_id=self.chat_id,
+                            text=(f"_@{await self._username(user_id)} ha fatto tombola\\._"),
+                            parse_mode=ParseMode.MARKDOWN_V2,
+                            message_thread_id=self.thread_id
+                        )
+                        return False  
+
+                    punti = base // 2
+                    await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=(f"_@{await self._username(user_id)} ha fatto tombolino e la partita è terminata\\._"),
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                        message_thread_id=self.thread_id
+                    )
+                    self.add_score(user_id, punti)
+                    self.game_active = False
+                    return True
+
+                else:
                     await context.bot.send_message(
                         chat_id=self.chat_id,
                         text=(f"_@{await self._username(user_id)} ha fatto tombola\\._"),
                         parse_mode=ParseMode.MARKDOWN_V2,
                         message_thread_id=self.thread_id
                     )
-                    return False  # continua il gioco
+                    return False  
 
-                punti = base // 2 if (tombolino_active and self.tombole_fatte == 2) else base
-                await context.bot.send_message(
-                    chat_id=self.chat_id,
-                    text=(f"_@{await self._username(user_id)} ha fatto tombolino e la partita è terminata\\._"),
-                    parse_mode=ParseMode.MARKDOWN_V2,
-                    message_thread_id=self.thread_id
-                )
-                self.add_score(user_id, punti)
-                self.game_active = False
-                return True  # partita finita
-
-        return False  # nessuna tombola, continua
+        return False
 
     async def check_winner(self, user_id, username, context: ContextTypes.DEFAULT_TYPE):
         scores = getattr(self, "custom_scores", {
@@ -435,6 +446,7 @@ class TombolaGame:
         self.current_game_scores = {}
         self.overall_scores = saved_overall_scores
         self.game_interrupted = False
+        self.tombole_fatte = 0
 
     async def get_username(self, user: Update.effective_user):
         user_id = user.id
