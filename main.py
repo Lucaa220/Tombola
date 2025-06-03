@@ -435,7 +435,8 @@ async def main() -> None:
     application.add_handler(CommandHandler('azzera', reset_classifica))
     application.add_handler(CommandHandler('regolo', regole))
     application.add_handler(CommandHandler('trova', find_group))
-    application.add_handler(CommandHandler('log', send_logs_by_group))
+    application.add_handler(CommandHandler('log', send_all_logs))
+    application.add_handler(CommandHandler('logruppo', send_logs_by_group))
 
     application.add_handler(
         CallbackQueryHandler(
