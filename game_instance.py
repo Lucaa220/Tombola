@@ -8,17 +8,16 @@ import json
 import os
 from telegram.constants import ParseMode
 import requests
+from telegram.helpers import escape_markdown
+import telegram
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 JSONBIN_BASE_URL = "https://api.jsonbin.io/v3/b"
 
+
 def load_classifica_from_json(group_id: int) -> dict:
-    """
-    Carica tutte le classifiche dal bin e restituisce solo quella per `group_id`.
-    Se il bin non esiste o c'è un errore, restituisce {}.
-    """
     url = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}/latest"
     headers = {
         "X-Master-Key": JSONBIN_API_KEY,
@@ -34,13 +33,10 @@ def load_classifica_from_json(group_id: int) -> dict:
     except Exception as e:
         logger.error(f"JSONBin load error: {e}")
 
-    return {}  # Restituisce un dizionario vuoto in caso di errore
+    return {}
+
 
 def save_classifica_to_json(group_id: int, scores: dict) -> None:
-    """
-    Carica il contenuto attuale del bin, aggiorna la voce per `group_id` e riscrive il record.
-    Se il bin non esiste, lo inizializza.
-    """
     url_latest = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}/latest"
     url = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}"
     headers = {
@@ -65,40 +61,36 @@ def save_classifica_to_json(group_id: int, scores: dict) -> None:
         logger.error(f"JSONBin save error: {e}")
 
 
-
 def update_player_score(group_id: int, user_id: int, points: int) -> None:
-    # Scarica il dict solo del gruppo
     classifica = load_classifica_from_json(group_id)
-
-    # Aggiorna il punteggio
     classifica[str(user_id)] = classifica.get(str(user_id), 0) + points
-
-    # Salva TUTTO il bin aggiornando solo questo gruppo
     save_classifica_to_json(group_id, classifica)
 
 
 class TombolaGame:
     def __init__(self):
-        self.players = {}  # Giocatori e le loro cartelle
-        self.numeri_estratti = []  # Numeri già estratti
-        # Include numeri da 1 a 90, bonus 110 e malus 666
+        self.players = {}
+        self.numeri_estratti = []
         self.numeri_tombola = list(range(1, 91)) + [110, 666, 104, 404]
-        random.shuffle(self.numeri_tombola)  # Mischia i numeri
-        self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None, 'tombola': None}  # Per tracciare le vittorie
-        self.game_active = True  # Stato del gioco
-        self.current_game_scores = {}  # Punteggi per la partita corrente
-        self.overall_scores = {}  # Punteggi generali
-        self.usernames = {}  # Dizionario per i nomi utente
+        random.shuffle(self.numeri_tombola)
+        # Un solo vincitore per ciascun premio
+        self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None}
+        self.tombola_winner = None  # Primo vincitore tombola
+        self.game_active = True
+        self.current_game_scores = {}
+        self.overall_scores = {}
+        self.usernames = {}
         self.players_in_game = set()
         self.extraction_started = False
         self.game_interrupted = False
         self.chat_id = None
-        self.thread_id = None  # Per gestire i thread dei messaggi
+        self.thread_id = None
         self.tombole_fatte = 0
+        self.custom_scores = premi_default.copy()
+        self.extraction_task = None
 
     def set_chat_id(self, chat_id):
         self.chat_id = chat_id
-        self.load_scores_from_file()
 
     def set_thread_id(self, thread_id):
         self.thread_id = thread_id
@@ -108,17 +100,15 @@ class TombolaGame:
             return False
 
         if user_id in self.players_in_game:
-            return False  # L'utente è già in partita
+            return False
 
         if user_id not in self.players:
-            # Genera 15 numeri unici per la cartella
             numeri_cartella = random.sample(range(1, 91), 15)
-            self.current_game_scores[user_id] = 0  # Inizializza il punteggio del giocatore per la partita corrente
-            # Divide i numeri in 3 righe da 5 numeri ciascuna
+            self.current_game_scores[user_id] = 0
             cartella = [
-                {num: False for num in sorted(numeri_cartella[0:5])},   # Prima riga
-                {num: False for num in sorted(numeri_cartella[5:10])},  # Seconda riga
-                {num: False for num in sorted(numeri_cartella[10:15])}  # Terza riga
+                {num: False for num in sorted(numeri_cartella[0:5])},
+                {num: False for num in sorted(numeri_cartella[5:10])},
+                {num: False for num in sorted(numeri_cartella[10:15])}
             ]
             self.players[user_id] = cartella
             self.players_in_game.add(user_id)
@@ -129,217 +119,254 @@ class TombolaGame:
         self.extraction_started = True
 
     async def draw_number(self, context: ContextTypes.DEFAULT_TYPE = None):
-        # 1) Prendi lo stato di tutti i bonus/malus
-        group_conf = load_group_settings().get(str(self.chat_id), {})
-        feature_states = group_conf.get("bonus_malus_settings", {
-            "104": True,
-            "110": True,
-            "666": True,
-            "404": True,
-            "Tombolino": True
-        })
-
-        # 2) Estrai il prossimo valore valido
-        number = None
-        while self.numeri_tombola and self.game_active:
-            candidate = self.numeri_tombola.pop(0)
-            key = str(candidate) if str(candidate) in feature_states else None
-
-            # Se è “Tombolino” lo gestirai altrove, qui lasciamo passare
-            if candidate == "Tombolino":
-                key = "Tombolino"
-
-            # Se è una feature definita e disabilitata, salta
-            if key and not feature_states.get(key, True):
-                continue
-
-            # Altrimenti lo prendi
-            number = candidate
-            break
-
-        if number is None:
+        if not self.game_active:
+            logger.warning(f"Tentativo di estrarre numero ma gioco non attivo in chat {self.chat_id}")
             return None
 
-        # 3) Registra l’estratto
-        self.numeri_estratti.append(number)
-
-        # 4) Applica logica speciali solo se abilitati
-        if number == 110 and feature_states.get("110", True):
-            if self.players_in_game:
-                player = random.choice(list(self.players_in_game))
-                punti = random.randint(1, 49)
-                self.add_score(player, punti)
-                if context:
-                    try:
-                        member = await context.bot.get_chat_member(self.chat_id, player)
-                        uname = member.user.username or member.user.first_name or str(player)
-                    except:
-                        uname = str(player)
-                    await context.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=(
-                            f"*🧑‍🎓 Numero 110 estratto\\!*\n\n"
-                            f"_🆒 @{uname} ha guadagnato {punti} punti_"
-                        ),
-                        message_thread_id=self.thread_id,
-                        parse_mode=ParseMode.MARKDOWN_V2
-                    )
-            else:
-                logger.warning("110 estratto ma non ci sono giocatori.")
-        
-        elif number == 666 and feature_states.get("666", True):
-            if self.players_in_game:
-                player = random.choice(list(self.players_in_game))
-                punti = random.randint(1, 49)
-                self.add_score(player, -punti)
-                if context:
-                    try:
-                        member = await context.bot.get_chat_member(self.chat_id, player)
-                        uname = member.user.username or member.user.first_name or str(player)
-                    except:
-                        uname = str(player)
-                    await context.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=(
-                            f"*🛐 Numero 666 estratto\\!*\n\n"
-                            f"_🆒 @{uname} ha perso {punti} punti_"
-                        ),
-                        message_thread_id=self.thread_id,
-                        parse_mode=ParseMode.MARKDOWN_V2
-                    )
-            else:
-                logger.warning("666 estratto ma non ci sono giocatori.")
-
-        elif number == 104 and feature_states.get("104", True):
-            if self.players_in_game:
-                player = random.choice(list(self.players_in_game))
-                punti = random.randint(1, 49)
-                self.add_score(player, punti)
-                if context:
-                    try:
-                        member = await context.bot.get_chat_member(self.chat_id, player)
-                        uname = member.user.username or member.user.first_name or str(player)
-                    except:
-                        uname = str(player)
-                    await context.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=(
-                            f"*♿️ Numero 104 estratto\\!*\n\n"
-                            f"_🆒 @{uname} ha guadagnato {punti} punti_"
-                        ),
-                        message_thread_id=self.thread_id,
-                        parse_mode=ParseMode.MARKDOWN_V2
-                    )
-            else:
-                logger.warning("104 estratto ma non ci sono giocatori.")    
-
-        elif number == 404 and feature_states.get("404", True):
-            if self.players_in_game:
-                player = random.choice(list(self.players_in_game))
-                punti = random.randint(1, 49)
-                self.add_score(player, -punti)
-                if context:
-                    try:
-                        member = await context.bot.get_chat_member(self.chat_id, player)
-                        uname = member.user.username or member.user.first_name or str(player)
-                    except:
-                        uname = str(player)
-                    await context.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=(
-                            f"*🆘 Numero 404 estratto\\!*\n\n"
-                            f"_🆒 @{uname} ha perso {punti} punti_"
-                        ),
-                        message_thread_id=self.thread_id,
-                        parse_mode=ParseMode.MARKDOWN_V2
-                    )
-            else:
-                logger.warning("404 estratto ma non ci sono giocatori.")
-        
-        return number
-    
-    async def check_for_tombola(self, context: ContextTypes.DEFAULT_TYPE):
         group_conf = load_group_settings().get(str(self.chat_id), {})
-        tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
-        premi = group_conf.get("premi", premi_default)
+        feature_states = group_conf.get("bonus_malus_settings", {
+            "104": True, "110": True, "666": True, "404": True, "Tombolino": True
+        })
+
+        selected_number = None
+        idx_to_pop = -1
+
+        for candidate_num in list(self.numeri_tombola):
+            key = str(candidate_num)
+            is_special_feature = key in feature_states
+
+            if is_special_feature and not feature_states.get(key, True):
+                continue
+
+            selected_number = candidate_num
+            try:
+                idx_to_pop = self.numeri_tombola.index(candidate_num)
+            except ValueError:
+                logger.error(f"Numero candidato {candidate_num} non trovato in self.numeri_tombola durante estrazione.")
+                continue
+            break
+
+        if idx_to_pop != -1:
+            self.numeri_tombola.pop(idx_to_pop)
+        elif not self.numeri_tombola and selected_number is None:
+            logger.info(f"Sacchetto numeri vuoto per la chat {self.chat_id}.")
+            self.game_active = False
+            return None
+
+        if selected_number is None:
+            logger.info(f"Nessun numero valido rimasto da estrarre secondo le impostazioni per la chat {self.chat_id}.")
+            if not self.numeri_tombola:
+                self.game_active = False
+            return None
+
+        self.numeri_estratti.append(selected_number)
+        logger.info(f"Numero estratto: {selected_number} in chat {self.chat_id}. Numeri rimasti: {len(self.numeri_tombola)}")
+
+        # 1) Marco il numero sui cartelloni di TUTTI i giocatori
+        for uid in list(self.players_in_game):
+            self.update_cartella(uid, selected_number)
+
+        # 2) Controllo collettivo dei vincitori per ogni premio (solo primo a farlo)
+        await self.check_all_winners(context)
+
+        return selected_number
+
+    async def check_all_winners(self, context: ContextTypes.DEFAULT_TYPE):
+        if not self.game_active or self.game_interrupted:
+            return
+
+        scores = self.custom_scores
+        candidati = {'ambo': [], 'terno': [], 'quaterna': [], 'cinquina': []}
 
         for user_id, cartella in self.players.items():
-            if cartella.is_complete(self.numeri_estratti):
+            if user_id not in self.players_in_game:
+                continue
+
+            for riga in cartella:
+                marcati_nella_riga = sum(1 for _, marked in riga.items() if marked)
+
+                if marcati_nella_riga == 2 and self.winners['ambo'] is None:
+                    candidati['ambo'].append(user_id)
+                if marcati_nella_riga == 3 and self.winners['terno'] is None:
+                    candidati['terno'].append(user_id)
+                if marcati_nella_riga == 4 and self.winners['quaterna'] is None:
+                    candidati['quaterna'].append(user_id)
+                if marcati_nella_riga == 5 and self.winners['cinquina'] is None:
+                    candidati['cinquina'].append(user_id)
+
+        for premio, lista_utenti in candidati.items():
+            if lista_utenti and self.winners[premio] is None:
+                vincitore = random.choice(lista_utenti)
+                self.winners[premio] = vincitore
+                punti_assegnati = scores.get(premio, 0)
+                self.add_score(vincitore, punti_assegnati)
+
+                raw_username = self.usernames.get(vincitore, f"Utente_{vincitore}")
+                escaped = escape_markdown(raw_username, version=2)
+                premio_cap = premio.capitalize()
+
+                text_annuncio = f"_🏆 @{escaped} ha fatto {premio_cap}\\!_"
+                await context.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=text_annuncio,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=self.thread_id
+                )
+
+    async def check_for_tombola(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """
+        Verifica se qualcuno ha fatto tombola o tombolino.
+        - Alla prima tombola: assegna a quel giocatore il premio tombola e imposta self.tombola_winner.
+        - Al secondo round (tombolino): ignora il giocatore self.tombola_winner e assegna tombolino al primo differente.
+        """
+        if not self.game_active:
+            return True
+
+        group_conf = load_group_settings().get(str(self.chat_id), {})
+        tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
+        tombola_points = self.custom_scores.get("tombola", premi_default["tombola"])
+
+        for user_id, cartella in self.players.items():
+            if user_id not in self.players_in_game:
+                continue
+
+            # Se è già il vincitore della prima tombola, ignoralo per il tombolino
+            if self.tombola_winner is not None and user_id == self.tombola_winner:
+                continue
+
+            is_tombola = all(marked for riga in cartella for _, marked in riga.items())
+            if not is_tombola:
+                continue
+
+            # Se non c'è ancora un vincitore di tombola, questo è il primo
+            if self.tombola_winner is None:
+                self.tombola_winner = user_id
                 self.tombole_fatte += 1
+                raw_username = self.usernames.get(user_id, f"Utente_{user_id}")
+                escaped_username = escape_markdown(raw_username, version=2)
 
-                base = premi.get("tombola", premi_default["tombola"])
-
+                # Primo round di tombola
                 if tombolino_active:
-                    if self.tombole_fatte == 1:
-                        await context.bot.send_message(
-                            chat_id=self.chat_id,
-                            text=(f"_@{await self._username(user_id)} ha fatto tombola\\._"),
-                            parse_mode=ParseMode.MARKDOWN_V2,
-                            message_thread_id=self.thread_id
-                        )
-                        return False  
+                    points_awarded = tombola_points
+                    announcement_text = (
+                        f"_🏆 @{escaped_username} ha fatto tombola, la partita prosegue per il tombolino_"
+                    )
+                    game_should_end = False
+                else:
+                    points_awarded = tombola_points
+                    announcement_text = (
+                        f"_🏆 @{escaped_username} ha fatto tombola e la partita è terminata\\._"
+                    )
+                    game_should_end = True
 
-                    punti = base // 2
+                self.add_score(user_id, points_awarded)
+                logger.info(
+                    f"Tombola per {raw_username} (ID: {user_id}) in chat {self.chat_id}. "
+                    f"Tombole fatte: {self.tombole_fatte}. Tombolino: {tombolino_active}. Punti: {points_awarded}"
+                )
+
+                try:
                     await context.bot.send_message(
                         chat_id=self.chat_id,
-                        text=(f"_@{await self._username(user_id)} ha fatto tombolino e la partita è terminata\\._"),
+                        text=announcement_text,
                         parse_mode=ParseMode.MARKDOWN_V2,
                         message_thread_id=self.thread_id
                     )
-                    self.add_score(user_id, punti)
+                except Exception as e:
+                    logger.error(
+                        f"Errore nell'annunciare la prima tombola per {raw_username} in chat {self.chat_id}: {e}"
+                    )
+
+                if game_should_end:
                     self.game_active = False
                     return True
-
                 else:
-                    await context.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=(f"_@{await self._username(user_id)} ha fatto tombola\\._"),
-                        parse_mode=ParseMode.MARKDOWN_V2,
-                        message_thread_id=self.thread_id
-                    )
-                    return False  
+                    return False  # Continua per far giocare gli altri al tombolino
+
+            # Se qui, significa che self.tombola_winner è già impostato: stiamo cercando il tombolino
+            # Questo user_id non è equal al primo vincitore, e ha la cartella piena => è il vincitore del tombolino
+            self.tombole_fatte += 1
+            raw_username = self.usernames.get(user_id, f"Utente_{user_id}")
+            escaped_username = escape_markdown(raw_username, version=2)
+            points_awarded = tombola_points // 2
+            announcement_text = (
+                f"_🏆 @{escaped_username} ha fatto tombolino e la partita è terminata\\._"
+            )
+            game_should_end = True
+
+            self.add_score(user_id, points_awarded)
+            logger.info(
+                f"Tombolino per {raw_username} (ID: {user_id}) in chat {self.chat_id}. "
+                f"Tombole fatte: {self.tombole_fatte}. Punti: {points_awarded}"
+            )
+
+            try:
+                await context.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=announcement_text,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=self.thread_id
+                )
+            except Exception as e:
+                logger.error(
+                    f"Errore nell'annunciare il tombolino per {raw_username} in chat {self.chat_id}: {e}"
+                )
+
+            if game_should_end:
+                self.game_active = False
+                return True
 
         return False
 
-    async def check_winner(self, user_id, username, context: ContextTypes.DEFAULT_TYPE):
-        scores = getattr(self, "custom_scores", {
-            "ambo": 5,
-            "terno": 10,
-            "quaterna": 15,
-            "cinquina": 20,
-            "tombola": 50
-        })
+    async def check_winner(self, user_id, username_raw, context: ContextTypes.DEFAULT_TYPE):
+        if not self.game_active or self.game_interrupted:
+            return
 
-        player_cartella = self.players.get(user_id, [])
+        player_cartella = self.players.get(user_id)
         if not player_cartella:
-            logger.warning(f"Nessuna cartella trovata per l'utente {user_id}.")
-            return None
+            logger.warning(f"Nessuna cartella trovata per l'utente {user_id} ({username_raw}) in check_winner.")
+            return
 
-        for i, riga in enumerate(player_cartella):
-            matched_numbers = sum(is_marked for is_marked in riga.values())
-            if matched_numbers in [2, 3, 4, 5]:
-                prize_type = ['ambo', 'terno', 'quaterna', 'cinquina'][matched_numbers - 2]
-                if self.winners[prize_type] is None:
-                    self.winners[prize_type] = user_id
-                    points = scores.get(prize_type, 0)
-                    self.add_score(user_id, points)
-                    asyncio.create_task(self.announce_winner(prize_type.capitalize(), username, context))
-                    return prize_type
+        scores = self.custom_scores
 
-        if all(is_marked for riga in player_cartella for is_marked in riga.values()) and self.winners['tombola'] is None:
-            self.winners['tombola'] = user_id
-            self.add_score(user_id, scores.get("tombola", 50))
-            await context.bot.send_message(
-                chat_id=self.chat_id,
-                text=f"_🏆 @{username} ha fatto tombola e la partita è terminata\\!_",
-                parse_mode=ParseMode.MARKDOWN_V2,
-                message_thread_id=self.thread_id
-            )
-            asyncio.create_task(self.update_overall_scores())
-            self.stop_game(interrupted=False)
-            return "tombola e la partita è terminata"
+        for riga in player_cartella:
+            numeri_marcati_in_riga = sum(1 for _, marked_val in riga.items() if marked_val)
 
-        return None
+            # Ambo
+            if numeri_marcati_in_riga == 2 and self.winners['ambo'] is None:
+                self.winners['ambo'] = user_id
+                punti_assegnati = scores.get('ambo', 0)
+                self.add_score(user_id, punti_assegnati)
+                logger.info(f"Ambo per {username_raw} (ID: {user_id}) in chat {self.chat_id}. Punti: {punti_assegnati}")
+                await self.announce_winner("Ambo", username_raw, punti_assegnati, context)
+                return
+
+            # Terno
+            if numeri_marcati_in_riga == 3 and self.winners['terno'] is None:
+                self.winners['terno'] = user_id
+                punti_assegnati = scores.get('terno', 0)
+                self.add_score(user_id, punti_assegnati)
+                logger.info(f"Terno per {username_raw} (ID: {user_id}) in chat {self.chat_id}. Punti: {punti_assegnati}")
+                await self.announce_winner("Terno", username_raw, punti_assegnati, context)
+                return
+
+            # Quaterna
+            if numeri_marcati_in_riga == 4 and self.winners['quaterna'] is None:
+                self.winners['quaterna'] = user_id
+                punti_assegnati = scores.get('quaterna', 0)
+                self.add_score(user_id, punti_assegnati)
+                logger.info(f"Quaterna per {username_raw} (ID: {user_id}) in chat {self.chat_id}. Punti: {punti_assegnati}")
+                await self.announce_winner("Quaterna", username_raw, punti_assegnati, context)
+                return
+
+            # Cinquina
+            if numeri_marcati_in_riga == 5 and self.winners['cinquina'] is None:
+                self.winners['cinquina'] = user_id
+                punti_assegnati = scores.get('cinquina', 0)
+                self.add_score(user_id, punti_assegnati)
+                logger.info(f"Cinquina per {username_raw} (ID: {user_id}) in chat {self.chat_id}. Punti: {punti_assegnati}")
+                await self.announce_winner("Cinquina", username_raw, punti_assegnati, context)
+                return
 
     def add_score(self, user_id, points):
         if user_id in self.current_game_scores:
@@ -369,7 +396,7 @@ class TombolaGame:
                     riga[number] = True
                     return True
         logger.warning(f"Numero {number} non trovato nella cartella dell'utente {user_id}.")
-        return False  # Restituisce False se il numero non è stato trovato
+        return False
 
     def interrupt_game(self):
         if self.game_active:
@@ -379,49 +406,15 @@ class TombolaGame:
             print("Nessun gioco attivo da interrompere.")
 
     def update_overall_scores(self):
-        """
-        Per ogni user_id in self.current_game_scores,
-        incrementa il suo punteggio sul bin usando update_player_score,
-        poi ricarica self.overall_scores e resetta current_game_scores.
-        """
         if self.game_interrupted or not self.chat_id:
             logger.warning("Partita interrotta o chat_id non impostato, punteggi non aggiornati.")
             return
 
-        # Usa l'helper che aggiorna un singolo utente sul bin
         for user_id, punti in self.current_game_scores.items():
             update_player_score(self.chat_id, user_id, punti)
 
-        # Ricarica i punteggi complessivi dal bin
-        # (questa chiamata ti restituisce solo il dict {user_id: punti} per questo gruppo)
         self.overall_scores = load_classifica_from_json(self.chat_id)
-
-        # Pulisci i punteggi di partita
         self.current_game_scores.clear()
-
-    def save_scores_to_file(self):
-        filename = "classifiche.json"
-        try:
-            if os.path.exists(filename):
-                with open(filename, 'r') as file:
-                    all_scores = json.load(file)
-            else:
-                all_scores = {}
-
-            all_scores[str(self.chat_id)] = self.overall_scores
-
-            with open(filename, 'w') as file:
-                json.dump(all_scores, file, indent=4)
-        except Exception as e:
-            logger.error(f"Errore durante il salvataggio dei punteggi: {e}")
-
-    def load_scores_from_file(self):
-        try:
-            all_scores = load_classifica_from_json("classifiche.json")
-            self.overall_scores = all_scores.get(str(self.chat_id), {})
-        except Exception as e:
-            logger.error(f"Errore durante il caricamento dei punteggi: {e}")
-            self.overall_scores = {}
 
     def stop_game(self, interrupted=False):
         self.game_active = False
@@ -434,19 +427,27 @@ class TombolaGame:
             print("Il gioco è stato interrotto, i punteggi della partita corrente non verranno conteggiati.")
 
     def reset_game(self):
-        saved_overall_scores = self.overall_scores.copy()
+        logger.info(f"Reset game state for chat {self.chat_id} (Thread: {self.thread_id})...")
         self.players = {}
         self.numeri_estratti = []
-        self.numeri_tombola = list(range(1, 91)) + [110, 666, 404, 104]
+        self.numeri_tombola = list(range(1, 91)) + [110, 666, 104, 404]
         random.shuffle(self.numeri_tombola)
-        self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None, 'tombola': None}
+        # Ripristina vincitori e tombola_winner a None
+        self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None}
+        self.tombola_winner = None
         self.game_active = True
         self.extraction_started = False
         self.players_in_game = set()
         self.current_game_scores = {}
-        self.overall_scores = saved_overall_scores
         self.game_interrupted = False
         self.tombole_fatte = 0
+
+        if self.extraction_task and not self.extraction_task.done():
+            try:
+                self.extraction_task.cancel()
+            except Exception:
+                pass
+        self.extraction_task = None
 
     async def get_username(self, user: Update.effective_user):
         user_id = user.id
@@ -474,37 +475,43 @@ class TombolaGame:
                 classifica_overall.append((username, score))
         return sorted(classifica_overall, key=lambda x: x[1], reverse=True)
 
-    async def announce_winner(self, prize_type, username, context: ContextTypes.DEFAULT_TYPE):
-        if not self.chat_id or not self.thread_id:
-            logger.error("Chat ID o Thread ID non sono definiti!")
+    async def announce_winner(self, prize_type_str: str, username_raw: str, points: int, context: ContextTypes.DEFAULT_TYPE):
+        if not self.game_active or self.game_interrupted:
             return
-        if self.game_interrupted:
-            print(f"Annuncio del premio {prize_type} non effettuato perché il gioco è stato interrotto.")
+        if not self.chat_id:
+            logger.error(f"Impossibile annunciare {prize_type_str} per {username_raw}: chat_id non definito.")
+            return
 
-    def save_scores_to_file(self, filename="classifiche.json"):
+        escaped_username = escape_markdown(username_raw, version=2)
+
+        message_text = f"_🏆 @{escaped_username} ha fatto {prize_type_str}\\!_"
+
         try:
-            with open(filename, 'w') as file:
-                json.dump(self.overall_scores, file)
-            print("Punteggi salvati correttamente.")
-        except IOError as e:
-            print(f"Errore durante il salvataggio dei punteggi: {e}")
+            await context.bot.send_message(
+                chat_id=self.chat_id,
+                text=message_text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                message_thread_id=self.thread_id
+            )
+            logger.info(f"Annunciato: {prize_type_str} per {username_raw} in chat {self.chat_id}")
+        except telegram.error.RetryAfter as e:
+            logger.warning(f"Flood control durante annuncio {prize_type_str} per {username_raw}: attendo {e.retry_after}s")
+            await asyncio.sleep(e.retry_after)
+            try:
+                await context.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=message_text,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=self.thread_id
+                )
+            except Exception as e_retry:
+                logger.error(f"Errore nel riprovare ad annunciare {prize_type_str} per {username_raw}: {e_retry}")
+        except Exception as e:
+            logger.error(f"Errore generico nell'annunciare {prize_type_str} per {escaped_username} in chat {self.chat_id}: {e}")
 
-    def load_scores_from_file(self, filename="classifiche.json"):
-        try:
-            with open(filename, 'r') as file:
-                self.overall_scores = json.load(file)
-            print("Punteggi caricati correttamente.")
-        except FileNotFoundError:
-            print(f"File {filename} non trovato, nessun punteggio da caricare.")
-            self.overall_scores = {}
-        except json.JSONDecodeError as e:
-            print(f"Errore nella lettura del file JSON: {e}")
-            self.overall_scores = {}
-        except IOError as e:
-            print(f"Errore durante il caricamento dei punteggi: {e}")
 
-# Dizionario per gestire le istanze di gioco per ogni chat
 games = {}
+
 
 def get_game(chat_id):
     if chat_id not in games:
