@@ -7,13 +7,22 @@ from telegram.constants import ParseMode
 import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
-import json
+import argparse
 
 # Configurazione dell'ambiente
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g. https://domain.com/webhook
 PORT = int(os.getenv('PORT', '8443'))
+
+_ALL_BONUS_FEATURES = {
+    "104": "104", 
+    "110": "110", 
+    "666": "666", 
+    "404": "404", 
+    "Tombolino": "Tombolino"
+}
+_DEFAULT_BONUS_STATES = {key: True for key in _ALL_BONUS_FEATURES} # Default: tutte attive
 
 # Impostazioni logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -27,7 +36,7 @@ _cache_ttl = 3600
 from comandi import start_game, button, estrai, stop_game, start, reset_classifica, regole
 from game_instance import get_game, load_classifica_from_json
 from variabili import is_admin, get_chat_id_or_thread, load_group_settings, save_group_settings, find_group, on_bot_added, premi_default
-from log import send_logs_by_group
+from log import send_all_logs, send_logs_by_group
 
 async def get_cached_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     now = asyncio.get_event_loop().time()
@@ -131,110 +140,156 @@ async def show_premi_menu(query, chat_id, settings):
         if "Message is not modified" not in str(e):
             raise e
 
-async def show_bonus_menu(query, chat_id, settings):
-    all_features = {
-        "104": "104",
-        "110": "110",
-        "666": "666",
-        "404": "404",
-        "Tombolino": "Tombolino"
-    }
+async def show_bonus_menu(query, chat_id_str: str, settings: dict):
+    group_conf = settings.setdefault(str(chat_id_str), {}) # str() è ridondante se chat_id_str è già stringa
+    # Inizializza 'bonus_malus_settings' se non esiste, usando _DEFAULT_BONUS_STATES
+    feature_states = group_conf.setdefault("bonus_malus_settings", _DEFAULT_BONUS_STATES.copy())
 
-    group_conf = settings.setdefault(str(chat_id), {})
-    feature_states = group_conf.setdefault(
-        "bonus_malus_settings",
-        {key: True for key in all_features}
-    )
+    # Assicura che tutte le feature definite in _ALL_BONUS_FEATURES abbiano uno stato
+    # Se una nuova feature è in _ALL_BONUS_FEATURES ma non in feature_states, usa il suo default
+    for key, default_value in _DEFAULT_BONUS_STATES.items():
+        if key not in feature_states:
+            feature_states[key] = default_value
 
     keyboard = []
-    for key, label in all_features.items():
-        active = feature_states.get(key, True)
-        keyboard.append([
-            InlineKeyboardButton("Attivo ✅" if active else "Attivo", callback_data=f"toggle_feature_{key}_active"),
-            InlineKeyboardButton(label, callback_data="none"),
-            InlineKeyboardButton("Non Attivo ❌" if not active else "Non Attivo", callback_data=f"toggle_feature_{key}_inactive")
-        ])
+    # Ordine di visualizzazione consistente per le feature
+    ordered_feature_keys = ["110", "104", "666", "404", "Tombolino"] 
+
+    for key in ordered_feature_keys:
+        if key in _ALL_BONUS_FEATURES: # Processa solo le feature definite
+            label = _ALL_BONUS_FEATURES[key] # Prende il nome/label della feature
+            active = feature_states.get(key) # Lo stato dovrebbe esistere dopo il loop di inizializzazione sopra
+
+            btn_active_text = f"Attivo {'✅' if active else ''}" # Testo del bottone "Attivo"
+            btn_inactive_text = f"Non Attivo {'❌' if not active else ''}" # Testo del bottone "Non Attivo"
+            
+            keyboard.append([
+                InlineKeyboardButton(btn_active_text, callback_data=f"toggle_feature_{key}_active"),
+                InlineKeyboardButton(label, callback_data="none"), # Bottone etichetta, non interagibile
+                InlineKeyboardButton(btn_inactive_text, callback_data=f"toggle_feature_{key}_inactive")
+            ])
 
     keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')])
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     text = (
         "_🆗 Qui puoi attivare o disattivare ogni bonus/malus singolarmente: "
         "tocca il pulsante per cambiare lo stato\\.\n\n"
-        "Attivo: ✅ · Non Attivo: ❌\\:_"
+        "Attivo: ✅ · Non Attivo: ❌\\:_" # Legenda originale
     )
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
+    try:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN_V2)
+    except Exception as e:
+        if "Message is not modified" not in str(e): logger.error(f"Errore in show_bonus_menu: {e}")
+
 
 async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    chat_id, _ = get_chat_id_or_thread(update)
-    settings = load_group_settings()
-    if str(chat_id) not in settings:
-        settings[str(chat_id)] = {}
+    await query.answer() # Rispondi subito alla callback
+    
+    chat_id_obj, _ = get_chat_id_or_thread(update) # Ottiene chat_id come intero
+    chat_id_str = str(chat_id_obj) # Converti in stringa per usarlo come chiave nei dizionari
+
+    settings = load_group_settings() # Carica tutte le impostazioni da JSONBin
+    
+    # Assicura che esista una voce per questa chat_id_str in settings
+    # Se non esiste, verrà creata la prima volta che si accede a una sotto-chiave con setdefault
+    # o quando si salva. È buona norma inizializzarla subito.
+    if chat_id_str not in settings:
+        settings[chat_id_str] = {} # Inizializza come dizionario vuoto se non esiste
 
     action = query.data
-    logger.info(f"settings_button: {action}")
+    logger.info(f"settings_button: Azione '{action}' per chat ID '{chat_id_str}'")
 
+    # --- Mantenimento della logica esistente per le altre azioni ---
     if action == 'menu_estrazione':
-        await show_extraction_menu(query, chat_id, settings)
+        await show_extraction_menu(query, chat_id_str, settings)
     elif action == 'menu_admin':
-        await show_admin_menu(query, chat_id, settings)
+        await show_admin_menu(query, chat_id_str, settings)
     elif action == 'menu_premi':
-        await show_premi_menu(query, chat_id, settings)
+        await show_premi_menu(query, chat_id_str, settings)
     elif action == 'menu_bonus':
-        await show_bonus_menu(query, chat_id, settings)
+        await show_bonus_menu(query, chat_id_str, settings) # Chiama la funzione corretta
     elif action == 'set_manual':
-        settings[str(chat_id)]['extraction_mode'] = 'manual'
+        settings[chat_id_str].setdefault('extraction_mode', 'manual') # Usa setdefault per sicurezza
+        settings[chat_id_str]['extraction_mode'] = 'manual'
         save_group_settings(settings)
-        await show_extraction_menu(query, chat_id, settings)
+        await show_extraction_menu(query, chat_id_str, settings)
     elif action == 'set_auto':
-        settings[str(chat_id)]['extraction_mode'] = 'auto'
+        settings[chat_id_str].setdefault('extraction_mode', 'manual')
+        settings[chat_id_str]['extraction_mode'] = 'auto'
         save_group_settings(settings)
-        await show_extraction_menu(query, chat_id, settings)
+        await show_extraction_menu(query, chat_id_str, settings)
     elif action == 'set_limita_admin_yes':
-        settings[str(chat_id)]['limita_admin'] = True
+        settings[chat_id_str].setdefault('limita_admin', True)
+        settings[chat_id_str]['limita_admin'] = True
         save_group_settings(settings)
-        await show_admin_menu(query, chat_id, settings)
+        await show_admin_menu(query, chat_id_str, settings)
     elif action == 'set_limita_admin_no':
-        settings[str(chat_id)]['limita_admin'] = False
+        settings[chat_id_str].setdefault('limita_admin', True)
+        settings[chat_id_str]['limita_admin'] = False
         save_group_settings(settings)
-        await show_admin_menu(query, chat_id, settings)
+        await show_admin_menu(query, chat_id_str, settings)
     elif action.startswith("set_premio_"):
         parts = action.split("_")
-        premio = parts[2]
+        premio_key = parts[2]
         change = int(parts[3])
-        if "premi" not in settings[str(chat_id)]:
-            settings[str(chat_id)]["premi"] = premi_default.copy()
-        settings[str(chat_id)]["premi"][premio] = max(0, settings[str(chat_id)]["premi"].get(premio, 0) + change)
+        
+        # Assicura che 'premi' esista e usa premi_default se necessario
+        current_premi = settings[chat_id_str].setdefault("premi", premi_default.copy())
+        current_premi[premio_key] = max(0, current_premi.get(premio_key, 0) + change)
+        
         save_group_settings(settings)
-        await show_premi_menu(query, chat_id, settings)
+        await show_premi_menu(query, chat_id_str, settings)
     elif action == "reset_premi":
-        settings[str(chat_id)]["premi"] = premi_default.copy()
+        settings[chat_id_str]["premi"] = premi_default.copy() # Resetta ai default globali
         save_group_settings(settings)
-        await show_premi_menu(query, chat_id, settings)
+        await show_premi_menu(query, chat_id_str, settings)
+    # --- Fine mantenimento logica esistente ---
+
     elif action.startswith("toggle_feature_"):
-        parts = action.split("_")
-        feature_key = parts[2]
-        state = parts[3]
-        logger.info(f"feature_key: {feature_key}, state: {state}")
-        fm = settings.setdefault(str(chat_id), {}).setdefault("bonus_malus_settings", {})
-        if state == "active":
-            fm[feature_key] = True
-        elif state == "inactive":
-            fm[feature_key] = False
-        save_group_settings(settings)
-        await show_bonus_menu(query, chat_id, settings)
+        parts = action.split("_") # Es: "toggle_feature_Tombolino_active"
+        feature_key = parts[2]    # Es: "Tombolino"
+        desired_state_str = parts[3] # Es: "active" o "inactive"
+        
+        logger.info(f"Richiesta modifica feature: '{feature_key}' a stato '{desired_state_str}' per chat {chat_id_str}")
+
+        # Assicura che 'bonus_malus_settings' esista per la chat, usando i default globali se necessario
+        bonus_malus_map = settings[chat_id_str].setdefault("bonus_malus_settings", _DEFAULT_BONUS_STATES.copy())
+
+        # Assicura che tutte le feature definite in _ALL_BONUS_FEATURES abbiano uno stato iniziale
+        # Questo è importante se _DEFAULT_BONUS_STATES non è stato usato prima per questa chat
+        for key, default_value in _DEFAULT_BONUS_STATES.items():
+            if key not in bonus_malus_map:
+                bonus_malus_map[key] = default_value
+        
+        if feature_key in bonus_malus_map: # Verifica che la feature_key sia valida
+            new_state = True if desired_state_str == "active" else False
+            bonus_malus_map[feature_key] = new_state
+            logger.info(f"Feature '{feature_key}' per chat {chat_id_str} impostata a {new_state}")
+        else:
+            logger.warning(f"Tentativo di modificare feature sconosciuta: '{feature_key}' per chat {chat_id_str}")
+
+        save_group_settings(settings) # Salva l'intero oggetto settings
+        await show_bonus_menu(query, chat_id_str, settings) # Ricarica e mostra il menu aggiornato
+
     elif action == 'back_to_main_menu':
-        await settings_command(update, context)
+        # Richiama la funzione settings_command per mostrare il menu principale
+        # Passa l'update originale, così settings_command può estrarre i dati necessari
+        # Non è necessario creare una nuova tastiera qui, settings_command lo farà.
+        # Nota: query.message deve essere disponibile per edit_text in settings_command se chiamato da callback
+        await settings_command(update, context) 
+
     elif action == 'close_settings':
         try:
             await query.message.delete()
-            await query.answer()
+            # query.answer() è già stato chiamato all'inizio
         except Exception as e:
-            logger.error(f"Errore eliminazione messaggio: {e}")
-            await query.answer("Errore nel chiudere il menu.")
+            logger.error(f"Errore durante l'eliminazione del messaggio delle impostazioni: {e}")
+            # Potresti voler inviare un avviso se l'eliminazione fallisce
+            await query.answer("Impossibile chiudere il menu.", show_alert=True) 
     else:
-        await query.answer()
+        logger.warning(f"Azione non gestita in settings_button: '{action}' per chat {chat_id_str}")
+        # query.answer() è già stato chiamato.
 
 def get_extraction_mode(chat_id):
     settings = load_group_settings()
