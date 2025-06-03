@@ -50,9 +50,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             group_link = None
 
-    print(f"ID gruppo: {chat_id}, Thread: {thread_id}, Nome: {group_name}, Link: {group_link}")
     game.reset_game()
-    print("Gioco resettato!")
 
     # Definisci i pulsanti per la gestione della partita
     keyboard = [
@@ -207,7 +205,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
 async def get_group_link(context, group_chat_id):
-    """Recupera il link del gruppo in modo asincrono."""
     try:
         chat = await context.bot.get_chat(group_chat_id)
         return f"https://t.me/{chat.username}" if chat.username else await context.bot.export_chat_invite_link(group_chat_id)
@@ -215,7 +212,6 @@ async def get_group_link(context, group_chat_id):
         return None
 
 async def send_cartella_to_user(user_id, game, group_text, context):
-    """Invia la cartella al giocatore in privato."""
     cartella = game.players[user_id]
     formatted_cartella = game.format_cartella(cartella)
     escaped_cartella = escape_markdown(formatted_cartella, version=2)
@@ -236,7 +232,6 @@ async def send_cartella_to_user(user_id, game, group_text, context):
         )
 
 async def show_cartella(user_id, game, query):
-    """Mostra la cartella del giocatore."""
     if user_id not in game.players:
         await query.answer("⛔️ Non sei in partita!", show_alert=True)
     else:
@@ -248,25 +243,17 @@ async def show_cartella(user_id, game, query):
         await query.answer(text=alert_text, show_alert=True)
 
 async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handler per l’estrazione di un numero (/estrai o pulsante “draw_number”).
-    """
-    # ─── 1) Verifica permessi (solo admin possono estrarre) ─────────────────────────────────
     if update and not await is_admin(update, context):
         if update.message:
             await update.message.reply_text("🚫 Solo gli amministratori possono estrarre i numeri manualmente.")
         return
 
-    # ─── 2) Ottieni chat_id e thread_id ─────────────────────────────────────────────────────
     if update:
         chat_id, thread_id = get_chat_id_or_thread(update)
     elif context.job:
         chat_id = context.job.chat_id
         game_temp = get_game(chat_id)
         thread_id = game_temp.thread_id
-    else:
-        logger.error("[estrai] Impossibile determinare chat_id per l'estrazione.")
-        return
 
     game = get_game(chat_id)
     if not game or not game.game_active:
@@ -278,27 +265,20 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # ─── 3) Se l'estrazione non è partita, iniziala ─────────────────────────────────────────
     if not game.extraction_started:
         game.start_extraction()
-        logger.info(f"[estrai] Avviata estrazione per chat_id={chat_id}")
 
-    # ─── 4) Carica impostazioni di gruppo ──────────────────────────────────────────────────
     group_settings = load_group_settings().get(str(chat_id), {})
     feature_states = group_settings.get("bonus_malus_settings", {
         "104": True, "110": True, "666": True, "404": True, "Tombolino": True
     })
     mode = group_settings.get('extraction_mode', 'manual')
 
-    # ─── 5) Prepara la tastiera per “🔎 Vedi Cartella” ─────────────────────────────────────
     keyboard_buttons = [
         [InlineKeyboardButton("🔎 Vedi Cartella", callback_data='mostra_cartella')]
     ]
     reply_markup_keyboard = InlineKeyboardMarkup(keyboard_buttons)
 
-    # ─────────────────────────────────────────────────────────────────────────────────────────
-    # Funzione interna: invia un DM a un giocatore se ha il numero e verifica vincite parziali
-    # ─────────────────────────────────────────────────────────────────────────────────────────
     async def dm_if_present(user_id: int, number_drawn: int, current_game_instance, bot_context):
         name = current_game_instance.usernames.get(user_id)
         if not name:
@@ -306,7 +286,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 member = await bot_context.bot.get_chat_member(current_game_instance.chat_id, user_id)
                 name = member.user.username or member.user.full_name or f"Utente_{user_id}"
             except Exception as e:
-                logger.error(f"[dm_if_present] Errore nel recuperare membro {user_id} per chat {current_game_instance.chat_id}: {e}")
                 name = f"Utente_{user_id}"
             current_game_instance.usernames[user_id] = name
         
@@ -323,7 +302,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN_V2
                 )
             except Exception as e:
-                logger.error(f"[dm_if_present] Errore nell'invio DM a {user_id} ({escaped_name_for_log}): {e}")
                 try:
                     escaped_name_for_group_message = escape_markdown(name, version=2)
                     await bot_context.bot.send_message(
@@ -337,9 +315,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await current_game_instance.check_winner(user_id, name, bot_context)
 
-    # ─────────────────────────────────────────────────────────────────────────────────────────
-    # Funzione interna: aggiorna in parallelo tutti i giocatori
-    # ─────────────────────────────────────────────────────────────────────────────────────────
     async def update_all_players_dm_and_check_minor_wins(current_game_instance, number_drawn, bot_context):
         tasks = [
             asyncio.create_task(dm_if_present(uid, number_drawn, current_game_instance, bot_context))
@@ -350,13 +325,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for res_idx, err_or_res in enumerate(results):
                 if isinstance(err_or_res, Exception):
                     player_id_involved = list(current_game_instance.players_in_game)[res_idx]
-                    logger.error(f"[update_all_players_dm] Errore in dm_if_present per user {player_id_involved}: {err_or_res}")
-        else:
-            logger.info(f"[update_all_players_dm] Nessun giocatore a cui inviare DM per il numero {number_drawn} in chat {current_game_instance.chat_id}.")
 
-    # ─────────────────────────────────────────────────────────────────────────────────────────
-    # Funzione interna: ciclo di estrazione
-    # ─────────────────────────────────────────────────────────────────────────────────────────
     async def extract_loop():
         nonlocal game, feature_states, mode
         
@@ -411,14 +380,11 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except IndexError:
                         pass
                 game.numeri_tombola.insert(0, current_number_val)
-                logger.info(f"Numero {current_number_val} reinserito nel sacchetto a causa di errore annuncio.")
                 continue
             except Exception as e:
                 logger.error(f"[extract_loop] Errore nell'invio messaggio numero {current_number_val}: {e}")
 
-            # ─── GESTIONE BONUS/MALUS DOPO ANNUNCIO ────────────────────────────────────────────────
             if current_number_val in [110, 666, 104, 404]:
-                # Controlla se il bonus/malus è attivo per questo numero
                 if feature_states.get(str(current_number_val), True):
                     player_id_affected = random.choice(list(game.players_in_game))
                     try:
@@ -445,7 +411,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         message_special_text = f"*🆘 Numero 404 estratto\\!*\n\n_🆒 @{user_affected_escaped_name} ha perso {punti_val} punti_"
 
                     if message_special_text:
-                        # 1) invia il messaggio scritto del bonus/malus
                         try:
                             await context.bot.send_message(
                                 chat_id=game.chat_id,
@@ -456,7 +421,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         except Exception as e:
                             logger.error(f"[extract_loop] Errore invio bonus/malus per numero {current_number_val} a chat {game.chat_id}: {e}")
 
-                        # 2) invia subito dopo lo sticker corrispondente
                         sticker_file_id = get_sticker_for_number(current_number_val)
                         if sticker_file_id:
                             try:
@@ -468,7 +432,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             except Exception as e:
                                 logger.error(f"[extract_loop] Errore invio sticker bonus/malus {current_number_val} a chat {game.chat_id}: {e}")
 
-            # Invia sticker per numeri speciali 69 e 90 DOPO l'annuncio del numero
             if current_number_val in [69, 90]:
                 sticker_file_id = get_sticker_for_number(current_number_val)
                 if sticker_file_id:
@@ -487,13 +450,10 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update_all_players_dm_and_check_minor_wins(game, current_number_val, context)
                 except Exception as e:
                     logger.error(f"[extract_loop] Errore in update_all_players_dm_and_check_minor_wins per numero {current_number_val}: {e}")
-            else:
-                logger.info(f"[extract_loop] Nessun giocatore in partita per il numero {current_number_val} in chat {game.chat_id}, salto aggiornamento cartelle.")
 
             if mode == 'auto':
                  await asyncio.sleep(1.5)
 
-            # Verifica Tombola (fine partita)
             partita_terminata_da_tombola = False
             if game.game_active:
                 try:
@@ -503,7 +463,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     partita_terminata_da_tombola = True
 
             if partita_terminata_da_tombola:
-                logger.info(f"[extract_loop] Partita terminata da check_for_tombola per chat_id={game.chat_id}.")
                 effective_update_for_end = update if update else type('obj', (object,), {'effective_chat': type('obj', (object,), {'id': game.chat_id}), 'effective_message': type('obj', (object,), {'is_topic_message': bool(game.thread_id), 'message_thread_id': game.thread_id}), 'effective_user': None})()
                 await end_game(effective_update_for_end, context)
                 break
