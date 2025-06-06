@@ -2,69 +2,32 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
-from variabili import chat_id_global, thread_id_global, JSONBIN_API_KEY, CLASSIFICA_BIN_ID, load_group_settings, premi_default
+from variabili import chat_id_global, thread_id_global, premi_default  # MODIFICA: manterremo load_group_settings solo se usato altrove
 import logging
 import json
 import os
 from telegram.constants import ParseMode
-import requests
-from telegram.helpers import escape_markdown
 import telegram
+from telegram.helpers import escape_markdown
+from firebase_client import (
+    load_classifica_from_firebase,    # in luogo di load_classifica_from_json
+    save_classifica_to_firebase,      # in luogo di save_classifica_to_json
+    load_group_settings_from_firebase # in luogo di load_group_settings (JSONBin)
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-JSONBIN_BASE_URL = "https://api.jsonbin.io/v3/b"
-
-
-def load_classifica_from_json(group_id: int) -> dict:
-    url = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}/latest"
-    headers = {
-        "X-Master-Key": JSONBIN_API_KEY,
-    }
-
-    try:
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-        data = resp.json().get("record", {})
-        return data.get(str(group_id), {})
-    except requests.HTTPError as e:
-        logger.error(f"JSONBin load error (HTTP): {e}")
-    except Exception as e:
-        logger.error(f"JSONBin load error: {e}")
-
-    return {}
-
-
-def save_classifica_to_json(group_id: int, scores: dict) -> None:
-    url_latest = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}/latest"
-    url = f"{JSONBIN_BASE_URL}/{CLASSIFICA_BIN_ID}"
-    headers = {
-        "X-Master-Key": JSONBIN_API_KEY,
-        "Content-Type": "application/json",
-    }
-
-    try:
-        resp = requests.get(url_latest, headers=headers)
-        resp.raise_for_status()
-        all_records = resp.json().get("record", {})
-    except Exception as e:
-        logger.warning(f"JSONBin pre-load warning, inizializzo bin vuoto: {e}")
-        all_records = {}
-
-    all_records[str(group_id)] = scores
-
-    try:
-        resp = requests.put(url, headers=headers, json=all_records)
-        resp.raise_for_status()
-    except Exception as e:
-        logger.error(f"JSONBin save error: {e}")
-
 
 def update_player_score(group_id: int, user_id: int, points: int) -> None:
-    classifica = load_classifica_from_json(group_id)
+    """
+    Carica la classifica corrente da Firebase, aggiorna i punti del giocatore e
+    salva nuovamente su Firebase.
+    """
+    classifica = load_classifica_from_firebase(group_id)
+    # Chiavi utente come stringa, incrementa i punti
     classifica[str(user_id)] = classifica.get(str(user_id), 0) + points
-    save_classifica_to_json(group_id, classifica)
+    save_classifica_to_firebase(group_id, classifica)
 
 
 class TombolaGame:
@@ -88,6 +51,10 @@ class TombolaGame:
         self.tombole_fatte = 0
         self.custom_scores = premi_default.copy()
         self.extraction_task = None
+        self.number_message_ids = []
+        self.join_lock = asyncio.Lock()
+
+
 
     def set_chat_id(self, chat_id):
         self.chat_id = chat_id
@@ -95,13 +62,13 @@ class TombolaGame:
     def set_thread_id(self, thread_id):
         self.thread_id = thread_id
 
-    def add_player(self, user_id):
+    def add_player(self, user_id: int) -> bool:
         if self.extraction_started:
             return False
-
         if user_id in self.players_in_game:
             return False
 
+        # Crea la cartella impostando 15 numeri casuali
         if user_id not in self.players:
             numeri_cartella = random.sample(range(1, 91), 15)
             self.current_game_scores[user_id] = 0
@@ -113,6 +80,7 @@ class TombolaGame:
             self.players[user_id] = cartella
             self.players_in_game.add(user_id)
             return True
+
         return False
 
     def start_extraction(self):
@@ -123,7 +91,8 @@ class TombolaGame:
             logger.warning(f"Tentativo di estrarre numero ma gioco non attivo in chat {self.chat_id}")
             return None
 
-        group_conf = load_group_settings().get(str(self.chat_id), {})
+        # MODIFICA: carica impostazioni di gruppo da Firebase
+        group_conf = load_group_settings_from_firebase(self.chat_id).get(str(self.chat_id), {})
         feature_states = group_conf.get("bonus_malus_settings", {
             "104": True, "110": True, "666": True, "404": True, "Tombolino": True
         })
@@ -198,9 +167,10 @@ class TombolaGame:
 
                 raw_username = self.usernames.get(vincitore, f"Utente_{vincitore}")
                 escaped = escape_markdown(raw_username, version=2)
-                premio_cap = premio.capitalize()
 
-                text_annuncio = f"_🏆 @{escaped} ha fatto {premio_cap}\\!_"
+                premio_lower = premio  # oppure premio.lower()
+                text_annuncio = f"_🏆 @{escaped} ha fatto {premio_lower}\\!_"
+
                 await context.bot.send_message(
                     chat_id=self.chat_id,
                     text=text_annuncio,
@@ -212,7 +182,8 @@ class TombolaGame:
         if not self.game_active:
             return True
 
-        group_conf = load_group_settings().get(str(self.chat_id), {})
+        # MODIFICA: carica impostazioni di gruppo da Firebase
+        group_conf = load_group_settings_from_firebase(self.chat_id).get(str(self.chat_id), {})
         tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
         tombola_points = self.custom_scores.get("tombola", premi_default["tombola"])
 
@@ -241,7 +212,7 @@ class TombolaGame:
                     )
                     game_should_end = False
 
-                elif tombolino_active and len(self.player_in_game) == 1:
+                elif tombolino_active and len(self.players_in_game) == 1:
                     points_awarded = tombola_points
                     announcement_text = (
                         f"_🏆 @{escaped_username} ha fatto tombola e la partita è terminata_"
@@ -382,13 +353,18 @@ class TombolaGame:
             self.stop_game(interrupted=True)
 
     def update_overall_scores(self):
+        """
+        Aggiorna la classifica complessiva in Firebase sommando i punteggi
+        della partita corrente. Poi ricarica la classifica overall da Firebase.
+        """
         if self.game_interrupted or not self.chat_id:
             return
 
         for user_id, punti in self.current_game_scores.items():
             update_player_score(self.chat_id, user_id, punti)
 
-        self.overall_scores = load_classifica_from_json(self.chat_id)
+        # Ricarica la classifica overall da Firebase
+        self.overall_scores = load_classifica_from_firebase(self.chat_id)
         self.current_game_scores.clear()
 
     def stop_game(self, interrupted=False):
@@ -419,6 +395,8 @@ class TombolaGame:
             except Exception:
                 pass
         self.extraction_task = None
+        self.number_message_ids.clear()
+
 
     async def get_username(self, user: Update.effective_user):
         user_id = user.id
@@ -452,7 +430,7 @@ class TombolaGame:
 
         escaped_username = escape_markdown(username_raw, version=2)
 
-        message_text = f"_🏆 @{escaped_username} ha fatto {prize_type_str}\\!_"
+        message_text = f"_🏆 @{escaped_username} ha fatto {prize_type_str.lower()}\\!_"
 
         try:
             await context.bot.send_message(
@@ -477,6 +455,7 @@ class TombolaGame:
             logger.error(f"Errore generico nell'annunciare {prize_type_str} per {escaped_username} in chat {self.chat_id}: {e}")
 
 
+# Gestione istanze di gioco per chat
 games = {}
 
 
