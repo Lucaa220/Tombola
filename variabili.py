@@ -1,112 +1,111 @@
-from telegram import Update
+from telegram import Update, Chat
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CallbackContext
 import logging
-import requests
 import os
-from telegram.constants import ParseMode
 from dotenv import load_dotenv
 
-# Impostazioni logger
+# --------------------------------------------------------------------
+# 1. Impostazioni logger e caricamento variabili d’ambiente
+# --------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 load_dotenv()
 
-# Variabili globali per chat_id e thread_id
+# --------------------------------------------------------------------
+# 2. Variabili globali preesistenti
+# --------------------------------------------------------------------
 chat_id_global = None
 thread_id_global = None
-SETTINGS_FILE = "group_settings.json"
 OWNER_USER_ID = "547260823"
-JSONBIN_API_KEY = os.getenv("JSONBIN_API_KEY")
-GROUP_SETTINGS_BIN_ID = os.getenv("GROUP_SETTINGS_BIN_ID")
-CLASSIFICA_BIN_ID = os.getenv("CLASSIFICA_BIN_ID")
-LOG_BIN_ID = os.getenv("LOG_BIN_ID")
-# Dizionario premi di default
+
+_ALL_BONUS_FEATURES = {
+    "104": "104",
+    "110": "110",
+    "666": "666",
+    "404": "404",
+    "Tombolino": "Tombolino"
+}
+
+_DEFAULT_BONUS_STATES = {key: True for key in _ALL_BONUS_FEATURES}
+
+# Dizionario premi di default (rimane invariato)
 premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
 
-def load_group_settings():
-    headers = {
-        "X-Master-Key": JSONBIN_API_KEY,
-        "Content-Type": "application/json"
-    }
-    url = f"https://api.jsonbin.io/v3/b/{GROUP_SETTINGS_BIN_ID}/latest"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()  
-        data = response.json()
-        return data.get('record', {})
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Errore durante il caricamento delle impostazioni dei gruppi da JSONBin.io: {e}")
-        return {}
+# --------------------------------------------------------------------
+# 4. Import delle funzioni Firebase (invece di JSONBin)
+# --------------------------------------------------------------------
+from firebase_client import (
+    load_group_settings_from_firebase,   # MODIFICA
+    save_group_settings_to_firebase     # MODIFICA
+)
 
-def save_group_settings(settings):
-    headers = {
-        "X-Master-Key": JSONBIN_API_KEY,
-        "Content-Type": "application/json"
-    }
-    url = f"https://api.jsonbin.io/v3/b/{GROUP_SETTINGS_BIN_ID}"
-    try:
-        response = requests.put(url, headers=headers, json=settings)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Errore durante il salvataggio delle impostazioni dei gruppi su JSONBin.io: {e}")
-
-# Funzione per ottenere chat_id e thread_id se applicabile
+# --------------------------------------------------------------------
+# 5. Funzione per ottenere chat_id e thread_id se applicabile
+# --------------------------------------------------------------------
 def get_chat_id_or_thread(update: Update):
-    chat_id = update.effective_chat.id  # Ottiene l'ID della chat corrente
-    thread_id = None  # Imposta di default il thread ID come None
+    chat_id = update.effective_chat.id
+    thread_id = None
     
-    # Se la chat ha thread, ottieni il thread ID
     if update.effective_message.is_topic_message:
         thread_id = update.effective_message.message_thread_id
     
     return chat_id, thread_id
 
-# Aggiungi una chiave per la limitazione degli amministratori
+# --------------------------------------------------------------------
+# 6. Funzione per ottenere la limitazione degli admin usando Firebase
+# --------------------------------------------------------------------
 def get_admin_limitation(chat_id):
-    settings = load_group_settings()
+    """
+    Carica da Firebase le impostazioni del gruppo specificato e
+    restituisce lo stato di 'limita_admin' (default True).
+    Se la voce non esiste, la crea con valori di default.
+    """
+    # MODIFICA: carica le impostazioni INTERE usando Firebase
+    settings = load_group_settings_from_firebase(chat_id)
 
-    if str(chat_id) not in settings:
-        settings[str(chat_id)] = {'extraction_mode': 'manual', 'limita_admin': True}  # Impostazione predefinita: limita admin
-        save_group_settings(settings)
+    chat_id_str = str(chat_id)
+    if chat_id_str not in settings:
+        # Se non esiste, inizializzo con extraction_mode manual e limita_admin True
+        settings[chat_id_str] = {'extraction_mode': 'manual', 'limita_admin': True}
+        save_group_settings_to_firebase(chat_id, settings)  # MODIFICA
+        return True
     else:
-        logger.info(f"Stato corrente della limitazione admin per chat {chat_id}: {settings[str(chat_id)].get('limita_admin', True)}")
-    
-    return settings[str(chat_id)].get('limita_admin', True)
+        stato = settings[chat_id_str].get('limita_admin', True)
+        logger.info(f"Stato corrente della limitazione admin per chat {chat_id}: {stato}")
+        return stato
 
-
-# Verifica se la limitazione degli admin è disattivata per la chat corrente
+# --------------------------------------------------------------------
+# 7. Verifica se l’utente è admin (o se la limitazione è disattivata)
+# --------------------------------------------------------------------
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, _ = get_chat_id_or_thread(update)
     
-    # Controlla se la limitazione admin è disabilitata
     if not get_admin_limitation(chat_id):
-        return True  # Se non ci sono limitazioni, tutti possono eseguire il comando
+        # Se la limitazione è disattivata, tutti possono eseguire
+        return True
 
-    # Altrimenti, controlla se l'utente è un admin
+    # Altrimenti controllo lo status Telegram
     user_id = update.effective_user.id
     chat_member = await context.bot.get_chat_member(chat_id, user_id)
     return chat_member.status in ['administrator', 'creator']
 
-
-from telegram import Chat
-from telegram.constants import ParseMode
-
+# --------------------------------------------------------------------
+# 8. Comando /find_group (rimasto invariato, non tocca Firebase o JSONBin)
+# --------------------------------------------------------------------
 async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
-        await update.message.reply_text("Devi fornire un ID di gruppo, ad esempio: /findgroup -1001234567890")
+        await update.message.reply_text(
+            "Devi fornire un ID di gruppo, ad esempio: /findgroup -1001234567890"
+        )
         return
 
     group_id = context.args[0]
     
     try:
-        # Recupera le informazioni del gruppo tramite l'ID specificato
         chat: Chat = await context.bot.get_chat(chat_id=group_id)
         
-        # Costruzione del messaggio
         messaggio = "📢 *Informazioni sul Gruppo*\n\n"
-        
-        # Sezione dettagli generali
         messaggio += "*Dettagli:*\n"
         messaggio += f"• *ID:* `{chat.id}`\n"
         messaggio += f"• *Tipo:* {chat.type}\n"
@@ -120,7 +119,6 @@ async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messaggio += f"• *Bio:* {chat.bio}\n"
         messaggio += "\n"
         
-        # Sezione impostazioni aggiuntive
         messaggio += "*Impostazioni:*\n"
         if chat.invite_link:
             messaggio += f"• *Invite Link:* {chat.invite_link}\n"
@@ -136,12 +134,10 @@ async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messaggio += f"• *Location:* lat {chat.location.latitude}, lon {chat.location.longitude}\n"
         messaggio += "\n"
         
-        # Sezione permessi
         if hasattr(chat, 'permissions') and chat.permissions:
             messaggio += "*Permessi del Gruppo:*\n"
             messaggio += format_chat_permissions(chat.permissions)
         
-        # Se il gruppo ha una foto, prova a inviarla come allegato
         if chat.photo:
             try:
                 await update.message.reply_photo(
@@ -156,13 +152,16 @@ async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(messaggio, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Errore nel trovare il gruppo con ID {group_id}: {e}")
-        await update.message.reply_text("Errore: il gruppo non è stato trovato o non posso accedervi.")
+        await update.message.reply_text(
+            "Errore: il gruppo non è stato trovato o non posso accedervi."
+        )
 
 def format_chat_permissions(permissions):
-    # Costruiamo una lista di tuple (etichetta, valore booleano)
     fields = [
         ("Invio di messaggi", permissions.can_send_messages),
-        ("Invio di messaggi multimediali", permissions.api_kwargs.get('can_send_media_messages', None) if hasattr(permissions, 'api_kwargs') else None),
+        ("Invio di messaggi multimediali", 
+         permissions.api_kwargs.get('can_send_media_messages', None) 
+         if hasattr(permissions, 'api_kwargs') else None),
         ("Invio di foto", permissions.can_send_photos),
         ("Invio di video", permissions.can_send_videos),
         ("Invio di note vocali", permissions.can_send_voice_notes),
@@ -178,28 +177,29 @@ def format_chat_permissions(permissions):
         ("Gestione argomenti", permissions.can_manage_topics),
     ]
     
-    # Costruiamo il messaggio formattato
     message = "🔹 *Chat Permissions:*\n\n"
     for label, value in fields:
-        # Salta i campi che risultano None (non disponibili)
         if value is not None:
             message += f"• *{label}:* {'✅' if value else '❌'}\n"
     return message
 
+# --------------------------------------------------------------------
+# 9. Handler che notifica l’owner quando il bot viene aggiunto a un gruppo (invariato)
+# --------------------------------------------------------------------
 async def on_bot_added(update: Update, context: CallbackContext):
     chat = update.effective_chat
     my_chat_member = update.my_chat_member
 
-    # Verifica che il bot sia stato appena aggiunto come membro del gruppo
-    if my_chat_member.old_chat_member.status != "member" and my_chat_member.new_chat_member.status == "member":
-        # Ottieni il numero di membri con 'await'
+    if (
+        my_chat_member.old_chat_member.status != "member"
+        and my_chat_member.new_chat_member.status == "member"
+    ):
         try:
             membri = await chat.get_member_count()
         except Exception as e:
             membri = "Sconosciuto"
             logger.error(f"Errore ottenendo il numero di membri: {e}")
 
-        # Prepara le informazioni del gruppo
         gruppo_info = (
             f"📢 Il bot è stato aggiunto a un nuovo gruppo!\n\n"
             f"🔹 Nome del gruppo: {chat.title}\n"
@@ -208,13 +208,15 @@ async def on_bot_added(update: Update, context: CallbackContext):
             f"🔹 Membri: {membri}"
         )
 
-        # Invia il messaggio al proprietario
         try:
             await context.bot.send_message(chat_id=OWNER_USER_ID, text=gruppo_info)
             logger.info(f"Informazioni inviate al proprietario: {OWNER_USER_ID}")
         except Exception as e:
             logger.error(f"Errore nell'invio del messaggio: {e}")
 
+# --------------------------------------------------------------------
+# 10. Funzione per ottenere sticker in base al numero (invaria)
+# --------------------------------------------------------------------
 def get_sticker_for_number(number):
     stickers = {
         69: "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE",
@@ -225,4 +227,3 @@ def get_sticker_for_number(number):
         404: "CAACAgQAAxkBAAE1oq5oOXsd4KgUBf_Zprzwu8ewEMVqmAACowwAAkwu8FPV9fZm6lrXPDYE"
     }
     return stickers.get(number)
-
