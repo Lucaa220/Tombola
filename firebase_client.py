@@ -1,4 +1,5 @@
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, db, exceptions
 import logging
@@ -9,11 +10,26 @@ logger.setLevel(logging.INFO)
 # --------------------------------------------------------------------
 # 1. Configurazione iniziale Firebase Admin
 # --------------------------------------------------------------------
-SERVICE_ACCOUNT_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-if not SERVICE_ACCOUNT_PATH:
+# Prendo il path dall'env var, rimuovendo eventuali virgolette residue
+raw_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+if not raw_path:
     raise RuntimeError(
         "Devi impostare GOOGLE_APPLICATION_CREDENTIALS con il percorso al file JSON del Service Account."
     )
+SERVICE_ACCOUNT_PATH = raw_path.strip('"').strip("'")
+
+# Verifico che il file esista
+if not os.path.isfile(SERVICE_ACCOUNT_PATH):
+    raise FileNotFoundError(
+        f"Non trovo il file di credenziali Firebase: {SERVICE_ACCOUNT_PATH}"
+    )
+
+# Verifico che sia un JSON ben formato
+try:
+    with open(SERVICE_ACCOUNT_PATH, "r", encoding="utf-8") as f:
+        sa_content = json.load(f)
+except Exception as e:
+    raise RuntimeError(f"Errore nel parsing del JSON di Firebase ({SERVICE_ACCOUNT_PATH}): {e}")
 
 DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL")
 if not DATABASE_URL:
@@ -23,23 +39,19 @@ if not DATABASE_URL:
 
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+        cred = credentials.Certificate(sa_content)
         firebase_admin.initialize_app(cred, {
             "databaseURL": DATABASE_URL
         })
-        logger.info("Firebase Admin inizializzato correttamente.")
+        logger.info("✅ Firebase Admin inizializzato correttamente.")
     except Exception as e:
-        logger.error(f"Errore inizializzazione Firebase Admin: {e}")
+        logger.error(f"❌ Errore inizializzazione Firebase Admin: {e}")
         raise
 
 # --------------------------------------------------------------------
 # 2. CLASSIFICA (punti)
 # --------------------------------------------------------------------
 def load_classifica_from_firebase(group_id: int) -> dict:
-    """
-    Legge la classifica per il group_id dal nodo /classifiche/{group_id}.
-    Restituisce un dict {utente: punteggio, ...} oppure {} se non esiste.
-    """
     try:
         ref = db.reference(f"classifiche/{group_id}")
         data = ref.get()
@@ -49,17 +61,12 @@ def load_classifica_from_firebase(group_id: int) -> dict:
         return {}
 
 def save_classifica_to_firebase(group_id: int, scores: dict) -> None:
-    """
-    Salva (o sovrascrive) il dict scores in /classifiche/{group_id}.
-    """
     try:
-        # Scores deve essere un dict piatto { "user_id": punti, ... }
         ref = db.reference(f"classifiche/{group_id}")
         ref.set(scores or {})
         logger.info(f"Classifica per group_id={group_id} salvata correttamente.")
     except exceptions.FirebaseError as e:
         logger.error(f"Firebase save_classifica error: {e}")
-
 
 # --------------------------------------------------------------------
 # 3. IMPOSTAZIONI DI GRUPPO
@@ -97,7 +104,6 @@ def save_all_group_settings_to_firebase(all_settings: dict) -> None:
         logger.info("Tutte le impostazioni di gruppo salvate correttamente.")
     except exceptions.FirebaseError as e:
         logger.error(f"Firebase save_all_group_settings error: {e}")
-
 
 # --------------------------------------------------------------------
 # 4. LOG DELLE INTERAZIONI
