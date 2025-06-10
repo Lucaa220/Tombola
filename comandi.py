@@ -664,6 +664,7 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(user_id, username, chat_id, "/stop", group_name)
     if not await is_admin(update, context):
         await update.message.reply_text("🚫 Solo gli amministratori possono interrompere il gioco.")
         return
@@ -680,6 +681,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(user_id, username, chat_id, "/azzera", group_name)
     chat_id, thread_id = get_chat_id_or_thread(update)
 
     if not await is_admin(update, context):
