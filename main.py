@@ -102,7 +102,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.full_name
     chat_id, thread_id = get_chat_id_or_thread(update)
-    logger.info(f"Impostazioni richieste da @{username} (ID: {user_id}) in chat {chat_id}")
+    await log_interaction(user_id, username, chat_id, "/impostami", group_name)
 
     # 1) Controllo permessi: solo admin possono aprire il pannello
     if not await is_admin(update, context):
