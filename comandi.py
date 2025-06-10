@@ -302,9 +302,8 @@ async def show_cartella(user_id, game, query):
 
 
 async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handler per l’estrazione di un numero (/estrai o pulsante “draw_number”).
-    """
+    await log_interaction(user_id, username, chat_id, "/estrai", group_name)
+    
     # ─── 1) Verifica permessi (solo admin possono estrarre) ─────────────────────────────────
     if update and not await is_admin(update, context):
         if update.message:
