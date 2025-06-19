@@ -79,7 +79,7 @@ from firebase_client import (
     save_group_settings_to_firebase,
 )
 from variabili import is_admin, get_chat_id_or_thread, find_group, on_bot_added, premi_default
-from log import send_all_logs, send_logs_by_group
+from log import send_all_logs, send_logs_by_group, log_interaction
 
 # --------------------------------------------------------------------
 # 6. Funzione per estrazione automatica (invariata, tranne che si usa get_extraction_mode che a sua volta usa Firebase)
@@ -102,6 +102,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.full_name
     chat_id, thread_id = get_chat_id_or_thread(update)
+    group_name = update.message.chat.title or "il gruppo"
     await log_interaction(user_id, username, chat_id, "/impostami", group_name)
 
     # 1) Controllo permessi: solo admin possono aprire il pannello
