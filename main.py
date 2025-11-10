@@ -561,7 +561,7 @@ async def main() -> None:
     await application.initialize()
 
     # ✅ REGISTRA WEBHOOK CORRETTO
-    webhook_full = f"{WEBHOOK_URL}/webhook"
+    webhook_full = f"{WEBHOOK_URL}"
     await application.bot.set_webhook(webhook_full)
 
     logger.info(f"✅ Webhook impostato su: {webhook_full}")
