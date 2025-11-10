@@ -482,13 +482,17 @@ async def health_check(request: web.Request) -> web.Response:
 async def handle_webhook(request: web.Request) -> web.Response:
     try:
         data = await request.json()
+        logger.info(f"[WEBHOOK] Update ricevuto: {data}")   # ✅ Log utile
     except Exception as e:
-        logger.error(f"Errore nel parse del JSON: {e}")
+        logger.error(f"[WEBHOOK] Errore nel parse del JSON: {e}")
         return web.Response(status=400, text="Invalid JSON")
 
-    update = Update.de_json(data, application.bot)
-
-    asyncio.create_task(application.process_update(update))
+    try:
+        update = Update.de_json(data, application.bot)
+        asyncio.create_task(application.process_update(update))
+    except Exception as e:
+        logger.error(f"[WEBHOOK] Errore nel process_update: {e}")
+        return web.Response(status=500)
 
     return web.Response(text="OK")
 
@@ -498,9 +502,9 @@ async def start_webserver() -> None:
     PORT = int(os.getenv('PORT', '8443'))
 
     webapp = web.Application()
-    webapp.router.add_get('/', health_check)       
-    webapp.router.add_get('/health', health_check)  
-    webapp.router.add_post('/webhook', handle_webhook)
+    webapp.router.add_get('/', health_check)
+    webapp.router.add_get('/health', health_check)
+    webapp.router.add_post('/webhook', handle_webhook)   # ✅ route webhook
 
     runner = web.AppRunner(webapp)
     await runner.setup()
@@ -508,22 +512,22 @@ async def start_webserver() -> None:
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
 
-    logger.info(f"Webserver avviato su 0.0.0.0:{PORT}")
+    logger.info(f"[WEBHOOK] Server avviato su 0.0.0.0:{PORT}")
 
 
 async def main() -> None:
     load_dotenv()
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL')   # es: https://tombola.onrender.com
 
     if not TOKEN or not WEBHOOK_URL:
-        logger.error("Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
+        logger.error("❌ Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
         return
 
-    # Creazione dell’Application (builder)
     global application
     application = Application.builder().token(TOKEN).build()
 
+    # ✅ HANDLERS
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('trombola', start_game))
     application.add_handler(CommandHandler('estrai', estrai))
@@ -549,18 +553,29 @@ async def main() -> None:
             pattern=r'^rule_(comandi|unirsi|estrazione|punteggi|bonus_malus|back|close)\|\-?\d+$'
         )
     )
-
     application.add_handler(CallbackQueryHandler(button))
 
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
+    # ✅ inizializza Application
     await application.initialize()
 
-    await application.bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook impostato su: {WEBHOOK_URL}")
+    # ✅ REGISTRA WEBHOOK CORRETTO
+    webhook_full = f"{WEBHOOK_URL}/webhook"
+    await application.bot.set_webhook(webhook_full)
+
+    logger.info(f"✅ Webhook impostato su: {webhook_full}")
+
+    # Debug Webhook State
+    try:
+        info = await application.bot.get_webhook_info()
+        logger.info(f"ℹ️ Webhook info: URL={info.url} pending={info.pending_update_count} error={info.last_error_message}")
+    except Exception as e:
+        logger.error(f"❌ Errore recuperando getWebhookInfo: {e}")
 
     await start_webserver()
 
+    logger.info("✅ Bot avviato e in ascolto degli update")
     await asyncio.Event().wait()
 
 
