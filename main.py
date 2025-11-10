@@ -482,16 +482,16 @@ async def health_check(request: web.Request) -> web.Response:
 async def handle_webhook(request: web.Request) -> web.Response:
     try:
         data = await request.json()
-        logger.info(f"[WEBHOOK] Update ricevuto: {data}")   # ✅ Log utile
+        logger.info(f"[WEBHOOK] Update ricevuto: {data}")
     except Exception as e:
         logger.error(f"[WEBHOOK] Errore nel parse del JSON: {e}")
         return web.Response(status=400, text="Invalid JSON")
 
     try:
         update = Update.de_json(data, application.bot)
-        asyncio.create_task(application.process_update(update))
+        await application.process_update(update)  # ✅ Processa subito l'update
     except Exception as e:
-        logger.error(f"[WEBHOOK] Errore nel process_update: {e}")
+        logger.exception(f"[WEBHOOK] Errore process_update: {e}")
         return web.Response(status=500)
 
     return web.Response(text="OK")
@@ -504,7 +504,7 @@ async def start_webserver() -> None:
     webapp = web.Application()
     webapp.router.add_get('/', health_check)
     webapp.router.add_get('/health', health_check)
-    webapp.router.add_post('/webhook', handle_webhook)   # ✅ route webhook
+    webapp.router.add_post('/webhook', handle_webhook)
 
     runner = web.AppRunner(webapp)
     await runner.setup()
@@ -518,7 +518,7 @@ async def start_webserver() -> None:
 async def main() -> None:
     load_dotenv()
     TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL')   # es: https://tombola.onrender.com
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # es: https://tombola-cmli.onrender.com
 
     if not TOKEN or not WEBHOOK_URL:
         logger.error("❌ Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
@@ -527,7 +527,9 @@ async def main() -> None:
     global application
     application = Application.builder().token(TOKEN).build()
 
-    # ✅ HANDLERS
+    # ============================
+    # HANDLER COMMAND
+    # ============================
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('trombola', start_game))
     application.add_handler(CommandHandler('estrai', estrai))
@@ -541,6 +543,9 @@ async def main() -> None:
     application.add_handler(CommandHandler('log', send_all_logs))
     application.add_handler(CommandHandler('logruppo', send_logs_by_group))
 
+    # ============================
+    # HANDLER CALLBACK QUERY
+    # ============================
     application.add_handler(
         CallbackQueryHandler(
             settings_button,
@@ -553,26 +558,40 @@ async def main() -> None:
             pattern=r'^rule_(comandi|unirsi|estrazione|punteggi|bonus_malus|back|close)\|\-?\d+$'
         )
     )
-    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CallbackQueryHandler(button))  # handler generico
 
+    # ============================
+    # HANDLER CHAT MEMBER
+    # ============================
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # ✅ inizializza Application
+    # ============================
+    # INIZIALIZZA APPLICATION
+    # ============================
     await application.initialize()
 
-    # ✅ REGISTRA WEBHOOK CORRETTO
+    # ============================
+    # SET WEBHOOK CORRETTO
+    # ============================
     webhook_full = f"{WEBHOOK_URL}"
-    await application.bot.set_webhook(webhook_full)
+    try:
+        ok = await application.bot.set_webhook(webhook_full)
+        logger.info(f"✅ Webhook impostato su: {webhook_full} -> {ok}")
+    except Exception as e:
+        logger.exception(f"❌ Errore setWebhook: {e}")
 
-    logger.info(f"✅ Webhook impostato su: {webhook_full}")
-
-    # Debug Webhook State
+    # ============================
+    # LOG INFO WEBHOOK
+    # ============================
     try:
         info = await application.bot.get_webhook_info()
-        logger.info(f"ℹ️ Webhook info: URL={info.url} pending={info.pending_update_count} error={info.last_error_message}")
+        logger.info(f"ℹ️ Webhook info: URL={info.url}, pending={info.pending_update_count}, error={info.last_error_message}")
     except Exception as e:
         logger.error(f"❌ Errore recuperando getWebhookInfo: {e}")
 
+    # ============================
+    # AVVIA SERVER
+    # ============================
     await start_webserver()
 
     logger.info("✅ Bot avviato e in ascolto degli update")
