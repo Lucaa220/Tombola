@@ -538,8 +538,7 @@ async def main() -> None:
         return
 
     # ✅ Normalizza
-    WEBHOOK_URL = WEBHOOK_URL.rstrip("/")
-    webhook_full = f"{WEBHOOK_URL}/webhook"
+    webhook_full = f"{WEBHOOK_URL}"
 
     global application
     application = Application.builder().token(TOKEN).build()
