@@ -496,24 +496,39 @@ async def health_check(request: web.Request) -> web.Response:
 # WEBHOOK HANDLER
 # ============================
 async def handle_webhook(request: web.Request) -> web.Response:
+    global application
+
     try:
         data = await request.json()
-        logger.info(f"[WEBHOOK] Update ricevuto")
     except Exception as e:
-        logger.error(f"[WEBHOOK] Errore nel parse del JSON: {e}")
+        logger.error(f"[WEBHOOK] ❌ Errore parsing JSON: {e}")
         return web.Response(status=400, text="Invalid JSON")
 
+    # Log grezzo
+    logger.info(f"[WEBHOOK] Update RAW: {json.dumps(data, ensure_ascii=False)}")
+
+    # Riconosco callback query
+    if "callback_query" in data:
+        logger.info("✅ CALLBACK QUERY RICEVUTA!")
+
+    # Conversione in oggetto telegram.Update
     try:
         update = Update.de_json(data, application.bot)
-
-        # ✅ IMPORTANTE: usare AWAIT, non create_task
-        await application.process_update(update)
-
     except Exception as e:
-        logger.exception(f"[WEBHOOK] Errore process_update: {e}")
-        return web.Response(status=500)
+        logger.error(f"[WEBHOOK] ❌ Errore converting to Update: {e}")
+        return web.Response(status=400, text="Bad update")
 
-    return web.Response(text="OK")
+    # Invio all'handler PTB
+    try:
+        await application.process_update(update)
+    except TelegramError as e:
+        logger.error(f"[WEBHOOK] ❌ TelegramError: {e}")
+        return web.Response(status=500, text="Telegram Error")
+    except Exception as e:
+        logger.error(f"[WEBHOOK] ❌ Unexpected error: {e}")
+        return web.Response(status=500, text="Internal Server Error")
+
+    return web.Response(status=200, text="OK")
 
 
 # ============================
@@ -549,7 +564,7 @@ async def main() -> None:
         logger.error("❌ Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
         return
 
-    webhook_full = f"{WEBHOOK_URL}"
+    webhook_full = WEBHOOK_URL.rstrip("/")
 
     global application
     application = Application.builder().token(TOKEN).build()
