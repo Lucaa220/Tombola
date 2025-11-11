@@ -47,6 +47,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+application = None
 # --------------------------------------------------------------------
 # 4. Cache informazioni chat (rimane invariate)
 # --------------------------------------------------------------------
@@ -479,17 +480,23 @@ async def health_check(request: web.Request) -> web.Response:
     return web.Response(text="OK")
 
 
+# ============================
+# WEBHOOK HANDLER
+# ============================
 async def handle_webhook(request: web.Request) -> web.Response:
     try:
         data = await request.json()
-        logger.info(f"[WEBHOOK] Update ricevuto: {data}")
+        logger.info(f"[WEBHOOK] Update ricevuto")
     except Exception as e:
         logger.error(f"[WEBHOOK] Errore nel parse del JSON: {e}")
         return web.Response(status=400, text="Invalid JSON")
 
     try:
         update = Update.de_json(data, application.bot)
-        await application.process_update(update)  # ✅ Processa subito l'update
+
+        # ✅ IMPORTANTE: usare AWAIT, non create_task
+        await application.process_update(update)
+
     except Exception as e:
         logger.exception(f"[WEBHOOK] Errore process_update: {e}")
         return web.Response(status=500)
@@ -497,32 +504,42 @@ async def handle_webhook(request: web.Request) -> web.Response:
     return web.Response(text="OK")
 
 
+# ============================
+# WEB SERVER
+# ============================
 async def start_webserver() -> None:
     load_dotenv()
-    PORT = int(os.getenv('PORT', '8443'))
+    PORT = int(os.getenv("PORT", "8443"))
 
     webapp = web.Application()
-    webapp.router.add_get('/', health_check)
-    webapp.router.add_get('/health', health_check)
-    webapp.router.add_post('/webhook', handle_webhook)
+    webapp.router.add_get("/", health_check)
+    webapp.router.add_get("/health", health_check)
+    webapp.router.add_post("/webhook", handle_webhook)
 
     runner = web.AppRunner(webapp)
     await runner.setup()
 
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
     logger.info(f"[WEBHOOK] Server avviato su 0.0.0.0:{PORT}")
 
 
+# ============================
+# MAIN
+# ============================
 async def main() -> None:
     load_dotenv()
-    TOKEN = os.getenv('TOKEN')
-    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # es: https://tombola-cmli.onrender.com
+    TOKEN = os.getenv("TOKEN")
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
     if not TOKEN or not WEBHOOK_URL:
         logger.error("❌ Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
         return
+
+    # ✅ Normalizza
+    WEBHOOK_URL = WEBHOOK_URL.rstrip("/")
+    webhook_full = f"{WEBHOOK_URL}/webhook"
 
     global application
     application = Application.builder().token(TOKEN).build()
@@ -530,73 +547,73 @@ async def main() -> None:
     # ============================
     # HANDLER COMMAND
     # ============================
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('trombola', start_game))
-    application.add_handler(CommandHandler('estrai', estrai))
-    application.add_handler(CommandHandler('stop', stop_game))
-    application.add_handler(CommandHandler('impostami', settings_command))
-    application.add_handler(CommandHandler('trombolatori', numero_giocatori))
-    application.add_handler(CommandHandler('classifiga', classifica))
-    application.add_handler(CommandHandler('azzera', reset_classifica))
-    application.add_handler(CommandHandler('regolo', regole))
-    application.add_handler(CommandHandler('trova', find_group))
-    application.add_handler(CommandHandler('log', send_all_logs))
-    application.add_handler(CommandHandler('logruppo', send_logs_by_group))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("trombola", start_game))
+    application.add_handler(CommandHandler("estrai", estrai))
+    application.add_handler(CommandHandler("stop", stop_game))
+    application.add_handler(CommandHandler("impostami", settings_command))
+    application.add_handler(CommandHandler("trombolatori", numero_giocatori))
+    application.add_handler(CommandHandler("classifiga", classifica))
+    application.add_handler(CommandHandler("azzera", reset_classifica))
+    application.add_handler(CommandHandler("regolo", regole))
+    application.add_handler(CommandHandler("trova", find_group))
+    application.add_handler(CommandHandler("log", send_all_logs))
+    application.add_handler(CommandHandler("logruppo", send_logs_by_group))
 
     # ============================
-    # HANDLER CALLBACK QUERY
+    # CALLBACK QUERY
     # ============================
     application.add_handler(
         CallbackQueryHandler(
             settings_button,
-            pattern=r'^(menu_|set_|toggle_feature_|back_to_main_menu|close_settings|reset_premi)'
+            pattern=r"^(menu_|set_|toggle_feature_|back_to_main_menu|close_settings|reset_premi)"
         )
     )
+
     application.add_handler(
         CallbackQueryHandler(
             rule_section_callback,
-            pattern=r'^rule_(comandi|unirsi|estrazione|punteggi|bonus_malus|back|close)\|\-?\d+$'
+            pattern=r"^rule_(comandi|unirsi|estrazione|punteggi|bonus_malus|back|close)\|\-?\d+$"
         )
     )
-    application.add_handler(CallbackQueryHandler(button))  # handler generico
+
+    application.add_handler(CallbackQueryHandler(button))
 
     # ============================
-    # HANDLER CHAT MEMBER
+    # BOT CHAT STATUS
     # ============================
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # ============================
-    # INIZIALIZZA APPLICATION
+    # START
     # ============================
     await application.initialize()
 
-    # ============================
-    # SET WEBHOOK CORRETTO
-    # ============================
-    webhook_full = f"{WEBHOOK_URL}"
+    # ✅ setWebhook
     try:
         ok = await application.bot.set_webhook(webhook_full)
-        logger.info(f"✅ Webhook impostato su: {webhook_full} -> {ok}")
+        logger.info(f"✅ Webhook impostato: {webhook_full} -> {ok}")
     except Exception as e:
         logger.exception(f"❌ Errore setWebhook: {e}")
 
-    # ============================
-    # LOG INFO WEBHOOK
-    # ============================
+    # ✅ log stato webhook
     try:
         info = await application.bot.get_webhook_info()
-        logger.info(f"ℹ️ Webhook info: URL={info.url}, pending={info.pending_update_count}, error={info.last_error_message}")
+        logger.info(
+            f"ℹ️ Webhook info:\n"
+            f" URL = {info.url}\n"
+            f" Pending = {info.pending_update_count}\n"
+            f" LastError = {info.last_error_message}"
+        )
     except Exception as e:
-        logger.error(f"❌ Errore recuperando getWebhookInfo: {e}")
+        logger.error(f"❌ Errore getWebhookInfo: {e}")
 
-    # ============================
-    # AVVIA SERVER
-    # ============================
+    # ✅ Start server
     await start_webserver()
 
     logger.info("✅ Bot avviato e in ascolto degli update")
     await asyncio.Event().wait()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
