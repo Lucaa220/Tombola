@@ -457,36 +457,33 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    if not query:
+        return
+
+    try:
+        await query.answer()  # ✅ OBBLIGATORIO
+    except Exception:
+        pass
+
     action = query.data
     user = query.from_user
     username = user.username or user.full_name
     user_id = user.id
 
-    # ✅ Sempre! Altrimenti i bottoni smettono di funzionare
-    try:
-        await query.answer()
-    except Exception as e:
-        logger.warning(f"⚠️ query.answer() ha fallito: {e}")
+    logger.info(f"[CALLBACK] Data='{action}' utente={username} ({user_id})")
 
-    logger.info(f"⚡ Callback ricevuta: '{action}' da {username} (ID: {user_id})")
+    if (
+        action.startswith("menu_")
+        or action.startswith("set_")
+        or action.startswith("toggle_feature_")
+        or action in ("back_to_main_menu", "close_settings", "reset_premi")
+    ):
+        return await settings_button(update, context)
 
-    try:
-        is_settings_action = (
-            action.startswith('menu_') or
-            action.startswith('set_') or
-            action.startswith('toggle_feature_') or
-            action in ('back_to_main_menu', 'close_settings', 'reset_premi')
-        )
+    if action.startswith("rule_"):
+        return await rule_section_callback(update, context)
 
-        if is_settings_action:
-            logger.info(f"🔧 Gestione callback settings → {action}")
-            return await settings_button(update, context)
-
-        logger.info(f"🎯 Gestione callback generale → {action}")
-        return await button(update, context)
-
-    except Exception as e:
-        logger.exception(f"🔥 Errore gestendo callback '{action}': {e}")
+    return await button(update, context)  # fallback
 
 async def health_check(request: web.Request) -> web.Response:
     return web.Response(text="OK")
