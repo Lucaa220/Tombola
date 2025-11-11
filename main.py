@@ -460,30 +460,33 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     if not query:
         return
 
+    # Risponde subito così Telegram non va in timeout
     try:
-        await query.answer()  # ✅ OBBLIGATORIO
-    except Exception:
+        await query.answer()
+    except:
         pass
 
-    action = query.data
-    user = query.from_user
-    username = user.username or user.full_name
-    user_id = user.id
+    data = query.data
+    logger.info(f"[CALLBACK] data = {data}")
 
-    logger.info(f"[CALLBACK] Data='{action}' utente={username} ({user_id})")
-
+    # ✅ Menù / impostazioni
     if (
-        action.startswith("menu_")
-        or action.startswith("set_")
-        or action.startswith("toggle_feature_")
-        or action in ("back_to_main_menu", "close_settings", "reset_premi")
+        data.startswith("menu_") or
+        data.startswith("set_") or
+        data.startswith("toggle_feature_") or
+        data in ("back_to_main_menu", "close_settings", "reset_premi")
     ):
+        logger.info("[ROUTER] → settings_button")
         return await settings_button(update, context)
 
-    if action.startswith("rule_"):
+    # ✅ Regole
+    if data.startswith("rule_"):
+        logger.info("[ROUTER] → rule_section_callback")
         return await rule_section_callback(update, context)
 
-    return await button(update, context)  # fallback
+    # ✅ Default: gioco
+    logger.info("[ROUTER] → button")
+    return await button(update, context)
 
 async def health_check(request: web.Request) -> web.Response:
     return web.Response(text="OK")
@@ -551,9 +554,9 @@ async def main() -> None:
     global application
     application = Application.builder().token(TOKEN).build()
 
-    # ============================
-    # HANDLER COMMAND
-    # ============================
+    # =====================================================
+    # ✅ COMMAND HANDLER
+    # =====================================================
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("trombola", start_game))
     application.add_handler(CommandHandler("estrai", estrai))
@@ -567,27 +570,29 @@ async def main() -> None:
     application.add_handler(CommandHandler("log", send_all_logs))
     application.add_handler(CommandHandler("logruppo", send_logs_by_group))
 
-    # ============================
-    # ✅ UNICO CALLBACK HANDLER
-    # ============================
+    # =====================================================
+    # ✅ UNICO CALLBACK QUERY ROUTER
+    # =====================================================
     application.add_handler(CallbackQueryHandler(combined_button_handler))
 
-    # ============================
-    # BOT CHAT STATUS
-    # ============================
+    # =====================================================
+    # ✅ BOT CHAT STATUS
+    # =====================================================
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # ============================
-    # START
-    # ============================
+    # =====================================================
+    # ✅ START
+    # =====================================================
     await application.initialize()
 
+    # ✅ Webhook
     try:
         ok = await application.bot.set_webhook(webhook_full)
         logger.info(f"✅ Webhook impostato: {webhook_full} -> {ok}")
     except Exception as e:
         logger.exception(f"❌ Errore setWebhook: {e}")
 
+    # ✅ Info webhook
     try:
         info = await application.bot.get_webhook_info()
         logger.info(
@@ -599,6 +604,7 @@ async def main() -> None:
     except Exception as e:
         logger.error(f"❌ Errore getWebhookInfo: {e}")
 
+    # ✅ Start webserver
     await start_webserver()
 
     logger.info("✅ Bot avviato e in ascolto degli update")
