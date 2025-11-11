@@ -498,7 +498,8 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
         except:
             pass
 
-
+async def health_check(request: web.Request) -> web.Response:
+    return web.Response(text="OK")
 # ============================
 # WEBHOOK HANDLER
 # ============================
