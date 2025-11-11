@@ -462,19 +462,31 @@ async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_
     username = user.username or user.full_name
     user_id = user.id
 
-    logger.info(f"Callback data '{action}' ricevuto da utente: {username} (ID: {user_id})")
+    # ✅ Sempre! Altrimenti i bottoni smettono di funzionare
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.warning(f"⚠️ query.answer() ha fallito: {e}")
 
-    settings_actions = (
-        action.startswith('menu_'),          
-        action.startswith('set_'),            
-        action.startswith('toggle_feature_'),
-        action in ('back_to_main_menu', 'close_settings', 'reset_premi')
-    )
+    logger.info(f"⚡ Callback ricevuta: '{action}' da {username} (ID: {user_id})")
 
-    if any(settings_actions):
-        await settings_button(update, context)
-    else:
-        await button(update, context)
+    try:
+        is_settings_action = (
+            action.startswith('menu_') or
+            action.startswith('set_') or
+            action.startswith('toggle_feature_') or
+            action in ('back_to_main_menu', 'close_settings', 'reset_premi')
+        )
+
+        if is_settings_action:
+            logger.info(f"🔧 Gestione callback settings → {action}")
+            return await settings_button(update, context)
+
+        logger.info(f"🎯 Gestione callback generale → {action}")
+        return await button(update, context)
+
+    except Exception as e:
+        logger.exception(f"🔥 Errore gestendo callback '{action}': {e}")
 
 async def health_check(request: web.Request) -> web.Response:
     return web.Response(text="OK")
@@ -537,7 +549,6 @@ async def main() -> None:
         logger.error("❌ Le variabili d'ambiente TOKEN e WEBHOOK_URL devono essere definite.")
         return
 
-    # ✅ Normalizza
     webhook_full = f"{WEBHOOK_URL}"
 
     global application
@@ -560,23 +571,9 @@ async def main() -> None:
     application.add_handler(CommandHandler("logruppo", send_logs_by_group))
 
     # ============================
-    # CALLBACK QUERY
+    # ✅ UNICO CALLBACK HANDLER
     # ============================
-    application.add_handler(
-        CallbackQueryHandler(
-            settings_button,
-            pattern=r"^(menu_|set_|toggle_feature_|back_to_main_menu|close_settings|reset_premi)"
-        )
-    )
-
-    application.add_handler(
-        CallbackQueryHandler(
-            rule_section_callback,
-            pattern=r"^rule_(comandi|unirsi|estrazione|punteggi|bonus_malus|back|close)\|\-?\d+$"
-        )
-    )
-
-    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CallbackQueryHandler(combined_button_handler))
 
     # ============================
     # BOT CHAT STATUS
@@ -588,14 +585,12 @@ async def main() -> None:
     # ============================
     await application.initialize()
 
-    # ✅ setWebhook
     try:
         ok = await application.bot.set_webhook(webhook_full)
         logger.info(f"✅ Webhook impostato: {webhook_full} -> {ok}")
     except Exception as e:
         logger.exception(f"❌ Errore setWebhook: {e}")
 
-    # ✅ log stato webhook
     try:
         info = await application.bot.get_webhook_info()
         logger.info(
@@ -607,7 +602,6 @@ async def main() -> None:
     except Exception as e:
         logger.error(f"❌ Errore getWebhookInfo: {e}")
 
-    # ✅ Start server
     await start_webserver()
 
     logger.info("✅ Bot avviato e in ascolto degli update")
