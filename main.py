@@ -458,38 +458,45 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query:
+        logger.error("[CALLBACK] ❌ Nessun callback_query nell'update!")
         return
 
     # Risponde subito così Telegram non va in timeout
     try:
         await query.answer()
-    except:
-        pass
+        logger.info(f"[CALLBACK] ✅ Answered callback: {query.data}")
+    except Exception as e:
+        logger.error(f"[CALLBACK] ❌ Errore answer(): {e}")
 
     data = query.data
-    logger.info(f"[CALLBACK] data = {data}")
+    logger.info(f"[CALLBACK] data = {data}, from user {query.from_user.id}")
 
-    # ✅ Menù / impostazioni
-    if (
-        data.startswith("menu_") or
-        data.startswith("set_") or
-        data.startswith("toggle_feature_") or
-        data in ("back_to_main_menu", "close_settings", "reset_premi")
-    ):
-        logger.info("[ROUTER] → settings_button")
-        return await settings_button(update, context)
+    try:
+        # ✅ Menù / impostazioni
+        if (
+            data.startswith("menu_") or
+            data.startswith("set_") or
+            data.startswith("toggle_feature_") or
+            data in ("back_to_main_menu", "close_settings", "reset_premi")
+        ):
+            logger.info("[ROUTER] → settings_button")
+            return await settings_button(update, context)
 
-    # ✅ Regole
-    if data.startswith("rule_"):
-        logger.info("[ROUTER] → rule_section_callback")
-        return await rule_section_callback(update, context)
+        # ✅ Regole
+        if data.startswith("rule_"):
+            logger.info("[ROUTER] → rule_section_callback")
+            return await rule_section_callback(update, context)
 
-    # ✅ Default: gioco
-    logger.info("[ROUTER] → button")
-    return await button(update, context)
-
-async def health_check(request: web.Request) -> web.Response:
-    return web.Response(text="OK")
+        # ✅ Default: gioco
+        logger.info("[ROUTER] → button")
+        return await button(update, context)
+        
+    except Exception as e:
+        logger.exception(f"[CALLBACK] ❌ ERRORE nel routing: {e}")
+        try:
+            await query.edit_message_text("❌ Errore nell'elaborazione del comando")
+        except:
+            pass
 
 
 # ============================
