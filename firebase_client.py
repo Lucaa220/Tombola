@@ -152,6 +152,9 @@ def add_log_entry(group_id: int, entry: dict) -> None:
     new_ref = ref.push()
     new_ref.set(entry)
     # Non loggare l'intero entry payload per non esporre dati sensibili
+<<<<<<< HEAD
+    logger.info(f"Log entry aggiunta per group_id={group_id}")
+=======
     logger.info(f"Log entry aggiunta per group_id={group_id}")DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError(
