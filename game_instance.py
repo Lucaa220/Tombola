@@ -424,6 +424,10 @@ class TombolaGame:
         self.current_game_scores = {}
         self.game_interrupted = False
         self.tombole_fatte = 0
+        self.user_houses = {} 
+
+        self.announced_join_users = set()
+        self.announced_smistamento_users = set()
 
         if self.extraction_task and not self.extraction_task.done():
             try:
@@ -432,7 +436,6 @@ class TombolaGame:
                 pass
         self.extraction_task = None
         self.number_message_ids.clear()
-
 
     async def get_username(self, user: Update.effective_user):
         user_id = user.id
