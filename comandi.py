@@ -124,7 +124,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             try:
                 member_status = await context.bot.get_chat_member(group_id, user_id)
-                if member_status.status not in ['member', 'administrator', 'creator']:
+                # MODIFICA QUI: Aggiunto 'restricted' per permettere l'ingresso a utenti con limitazioni
+                if member_status.status not in ['member', 'administrator', 'creator', 'restricted']:
                     text = get_testo_tematizzato('join_non_autorizzato', tema)
                     await update.message.reply_text(text)
                     logger.info(f"Tentativo di join non autorizzato: User {user_id} per gruppo {group_id}")
@@ -247,7 +248,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN_V2,
         disable_web_page_preview=True
     )
-
+    
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
@@ -285,7 +286,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             member_status = await context.bot.get_chat_member(group_chat_id, user_id)
-            if member_status.status not in ['member', 'administrator', 'creator']:
+            # MODIFICA QUI: Aggiunto 'restricted' per permettere l'ingresso a utenti con limitazioni
+            if member_status.status not in ['member', 'administrator', 'creator', 'restricted']:
                 text = get_testo_tematizzato('non_membro_gruppo', tema)
                 await query.answer(text, show_alert=True)
                 logger.info(f"Tentativo di join non autorizzato via bottone: User {user_id} per gruppo {group_chat_id}")
@@ -384,7 +386,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Azione non gestita in button: {query.data}")
         await query.answer()
-
+        
 async def get_group_link(context, group_chat_id):
     try:
         chat = await context.bot.get_chat(group_chat_id)
