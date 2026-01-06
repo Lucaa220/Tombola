@@ -402,18 +402,16 @@ async def logstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"_🆘 Errori rilevati: {count_errors}_\n"
     )
 
-    # Invia un unico messaggio: photo + caption. Caption deve essere escapata per MarkdownV2
-    caption = esc(summary)
     # Telegram ha un limite di ~1024 caratteri per caption; tronchiamo se necessario
-    if len(caption) > 1000:
-        caption = caption[:997] + '...'
+    if len(summary) > 1000:
+        summary = summary[:997] + '...'
 
     try:
-        await context.bot.send_photo(chat_id=chat.id, photo=bio, caption=caption, parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_photo(chat_id=chat.id, photo=bio, caption=summary, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception as e:
         # Se l'invio fallisce, invia un messaggio di testo come fallback (escaped)
         try:
-            await context.bot.send_message(chat_id=chat.id, text=caption, parse_mode=ParseMode.MARKDOWN_V2)
+            await context.bot.send_message(chat_id=chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
         except Exception:
             logger.error(f"Errore inviando il grafico o il caption: {e}")
 
@@ -529,7 +527,7 @@ async def logactivity(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plt.close(fig)
         bio.seek(0)
 
-        caption = esc(f"Attività rilevata: {sum(weekday_vals)} partite (ultimi 7 giorni)")
+        caption = f"_🔙  Attività rilevata\\: {sum(weekday_vals)} partite negli ultimi 7 giorni_"
         await context.bot.send_photo(chat_id=chat.id, photo=bio, caption=caption, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception as e:
         logger.error(f"Errore generando o inviando i grafici /logactivity: {e}")
