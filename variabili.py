@@ -3,6 +3,8 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CallbackContext
 import logging
 import os
+import asyncio
+import time
 from dotenv import load_dotenv
 
 # --------------------------------------------------------------------
@@ -17,7 +19,14 @@ load_dotenv()
 # --------------------------------------------------------------------
 chat_id_global = None
 thread_id_global = None
-OWNER_USER_ID = "547260823"
+# OWNER_USER_ID ora viene preso esclusivamente da variabile d'ambiente opzionale.
+# Se non impostata, rimane None (caller deve gestire l'assenza).
+owner_env = os.getenv('OWNER_USER_ID')
+try:
+    OWNER_USER_ID = int(owner_env) if owner_env is not None else None
+except Exception:
+    logger.warning('OWNER_USER_ID non è un intero valido; impostato a None')
+    OWNER_USER_ID = None
 
 _ALL_BONUS_FEATURES = {
     "104": "104",
@@ -52,6 +61,37 @@ def get_chat_id_or_thread(update: Update):
     
     return chat_id, thread_id
 
+
+# ----------------------------
+# Async cached get_chat
+# ----------------------------
+# semplice cache in-memory per evitare chiamate ripetute a get_chat
+_chat_cache = {}
+_chat_cache_lock = asyncio.Lock()
+_chat_cache_ttl = int(os.getenv('CHAT_CACHE_TTL', '300'))
+
+async def cached_get_chat(bot, chat_id):
+    key = str(chat_id)
+    now = time.time()
+    async with _chat_cache_lock:
+        entry = _chat_cache.get(key)
+        if entry:
+            chat_obj, ts = entry
+            if now - ts < _chat_cache_ttl:
+                return chat_obj
+            else:
+                # scaduto
+                _chat_cache.pop(key, None)
+    # fuori dal lock chiamata reale
+    try:
+        chat = await bot.get_chat(chat_id=chat_id)
+        async with _chat_cache_lock:
+            _chat_cache[key] = (chat, now)
+        return chat
+    except Exception as e:
+        logger.error(f"cached_get_chat: errore ottenendo chat {chat_id}: {e}")
+        raise
+
 # --------------------------------------------------------------------
 # 6. Funzione per ottenere la limitazione degli admin usando Firebase
 # --------------------------------------------------------------------
@@ -75,17 +115,12 @@ def get_admin_limitation(chat_id):
         logger.info(f"Stato corrente della limitazione admin per chat {chat_id}: {stato}")
         return stato
 
-# --------------------------------------------------------------------
-# 7. Verifica se l’utente è admin (o se la limitazione è disattivata)
-# --------------------------------------------------------------------
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, _ = get_chat_id_or_thread(update)
     
     if not get_admin_limitation(chat_id):
-        # Se la limitazione è disattivata, tutti possono eseguire
         return True
 
-    # Altrimenti controllo lo status Telegram
     user_id = update.effective_user.id
     chat_member = await context.bot.get_chat_member(chat_id, user_id)
     return chat_member.status in ['administrator', 'creator']
@@ -103,7 +138,7 @@ async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = context.args[0]
     
     try:
-        chat: Chat = await context.bot.get_chat(chat_id=group_id)
+        chat: Chat = await cached_get_chat(context.bot, group_id)
         
         messaggio = "📢 *Informazioni sul Gruppo*\n\n"
         messaggio += "*Dettagli:*\n"
@@ -157,28 +192,29 @@ async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 def format_chat_permissions(permissions):
-    fields = [
-        ("Invio di messaggi", permissions.can_send_messages),
-        ("Invio di messaggi multimediali", 
-         permissions.api_kwargs.get('can_send_media_messages', None) 
-         if hasattr(permissions, 'api_kwargs') else None),
-        ("Invio di foto", permissions.can_send_photos),
-        ("Invio di video", permissions.can_send_videos),
-        ("Invio di note vocali", permissions.can_send_voice_notes),
-        ("Invio di video note", permissions.can_send_video_notes),
-        ("Invio di audio", permissions.can_send_audios),
-        ("Invio di documenti", permissions.can_send_documents),
-        ("Invio di sondaggi", permissions.can_send_polls),
-        ("Aggiunta di anteprime", permissions.can_add_web_page_previews),
-        ("Invio di altri messaggi", permissions.can_send_other_messages),
-        ("Modifica informazioni", permissions.can_change_info),
-        ("Invito utenti", permissions.can_invite_users),
-        ("Fissare messaggi", permissions.can_pin_messages),
-        ("Gestione argomenti", permissions.can_manage_topics),
+    # Mappa etichetta -> attributo Permissions
+    mapping = [
+        ("Invio di messaggi", 'can_send_messages'),
+        ("Invio di messaggi multimediali", 'can_send_media_messages'),
+        ("Invio di foto", 'can_send_photos'),
+        ("Invio di video", 'can_send_videos'),
+        ("Invio di note vocali", 'can_send_voice_notes'),
+        ("Invio di video note", 'can_send_video_notes'),
+        ("Invio di audio", 'can_send_audios'),
+        ("Invio di documenti", 'can_send_documents'),
+        ("Invio di sondaggi", 'can_send_polls'),
+        ("Aggiunta di anteprime", 'can_add_web_page_previews'),
+        ("Invio di altri messaggi", 'can_send_other_messages'),
+        ("Modifica informazioni", 'can_change_info'),
+        ("Invito utenti", 'can_invite_users'),
+        ("Fissare messaggi", 'can_pin_messages'),
+        ("Gestione argomenti", 'can_manage_topics'),
     ]
-    
+
     message = "🔹 *Chat Permissions:*\n\n"
-    for label, value in fields:
+    for label, attr in mapping:
+        # usa getattr in modo sicuro; se l'attributo non esiste, ottiene None
+        value = getattr(permissions, attr, None)
         if value is not None:
             message += f"• *{label}:* {'✅' if value else '❌'}\n"
     return message
@@ -214,16 +250,123 @@ async def on_bot_added(update: Update, context: CallbackContext):
         except Exception as e:
             logger.error(f"Errore nell'invio del messaggio: {e}")
 
-# --------------------------------------------------------------------
-# 10. Funzione per ottenere sticker in base al numero (invaria)
-# --------------------------------------------------------------------
-def get_sticker_for_number(number):
-    stickers = {
+# Supporto sticker per tema: mappa tema -> (numero -> sticker_file_id), più uno sticker finale opzionale
+THEME_STICKERS = {
+    "normale": {
         69: "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE",
         90: "CAACAgEAAxkBAAEt32Vm8Z_GSXsHJiUjkcuuFKbOn6-C5QAC5gUAAknjsAjqSIl2V50ugDYE",
         104: "CAACAgQAAxkBAAExyBZnsMNjcmrjrNQpNTTiJDhIuaqLEAACLhcAAsNrSVEvCd8T5g72HDYE",
         666: "CAACAgQAAxkBAAEx-sBnuLFsYCU3q7RM7U0-kKNSkEHAhgACXAADIPteF9q_7MKC2ERiNgQ",
         110: "CAACAgQAAxkBAAE1oqxoOXr1BaVGLmjQ6UfsbRTTcVOgtQACJwoAArybIFHOnHbz_EYnizYE",
-        404: "CAACAgQAAxkBAAE1oq5oOXsd4KgUBf_Zprzwu8ewEMVqmAACowwAAkwu8FPV9fZm6lrXPDYE"
+        404: "CAACAgQAAxkBAAE1oq5oOXsd4KgUBf_Zprzwu8ewEMVqmAACowwAAkwu8FPV9fZm6lrXPDYE",
+        "final": "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
+    },
+    # Esempio di tema alternativo (puoi aggiungere sticker diversi per tema)
+    "harry_potter": {
+        69: "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE",
+        90: "CAACAgEAAxkBAAEt32Vm8Z_GSXsHJiUjkcuuFKbOn6",
+        104: "CAACAgIAAxkBAAE_7LZpU5bDar1npSTkGJlqp0ygTJm4GAACIDgAAnkR-UlJfPy0gvKZvjgE",
+        666: "CAACAgIAAxkBAAE_7KhpU5ZYdl6gCPJJbWRWlZr58sKBjgACoTwAAo4TIUnVBy3VTBB29TgE",
+        110: "CAACAgIAAxkBAAE_7LJpU5apvV5L8q71JtUyu4PPamjkVQACnx8AAlHF6Ur3ThPuK03feDgE",
+        404: "CAACAgIAAxkBAAE_7KxpU5aQzYOCUEa48D86zDeBMPiyKwACzh4AAmVK6Eq3dJbJGEtjGDgE",
+        "final": "CAACAgQAAxkBAAE_zK1pT63xXtFOFDAa_ekPN4o7-kMi8AACDAEAAr77Uw45cDSvFffnFjYE"
     }
-    return stickers.get(number)
+}
+
+def get_sticker_for_number(number, tema: str = 'normale'):
+    stickers_for_tema = THEME_STICKERS.get(tema, THEME_STICKERS.get('normale', {}))
+    # Se il tema disabilita gli sticker, restituisci None
+    theme_settings = THEME_SETTINGS.get(tema, THEME_SETTINGS.get('normale', {}))
+    if not theme_settings.get('stickers_enabled', True):
+        return None
+    return stickers_for_tema.get(number)
+
+def get_final_sticker(tema: str = 'normale'):
+    theme_settings = THEME_SETTINGS.get(tema, THEME_SETTINGS.get('normale', {}))
+    if not theme_settings.get('stickers_enabled', True):
+        return None
+    stickers_for_tema = THEME_STICKERS.get(tema, THEME_STICKERS.get('normale', {}))
+    return stickers_for_tema.get('final')
+
+
+# Impostazioni per tema: abilitazione sticker e feature disponibili per tema
+THEME_SETTINGS = {
+    "normale": {
+        "stickers_enabled": True
+    },
+    "harry_potter": {
+        "stickers_enabled": True
+    }
+}
+
+THEME_FEATURES = {
+    "normale": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    },
+    "harry_potter": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    }
+}
+
+
+# Validazione di THEME_FEATURES: rimuove chiavi non riconosciute e normalizza i valori a bool
+VALID_FEATURE_KEYS = set(_ALL_BONUS_FEATURES.keys())
+
+def _validate_theme_features():
+    for tema, feats in list(THEME_FEATURES.items()):
+        if not isinstance(feats, dict):
+            logger.warning(f"THEME_FEATURES: valore per tema '{tema}' non è dict; verrà sostituito con dict vuoto")
+            THEME_FEATURES[tema] = {}
+            continue
+        for k in list(feats.keys()):
+            if k not in VALID_FEATURE_KEYS:
+                logger.warning(f"THEME_FEATURES: rimosso feature non valida '{k}' dal tema '{tema}'")
+                feats.pop(k, None)
+            else:
+                # Normalizza a bool
+                feats[k] = bool(feats.get(k, False))
+
+# Esegui validazione al caricamento del modulo
+_validate_theme_features()
+
+def get_default_feature_states(tema: str = 'normale'):
+    """Restituisce un dizionario con lo stato (True/False) delle feature per il tema.
+
+    La funzione ritorna mapping con chiavi stringa per ogni feature nota.
+    """
+    defaults = THEME_FEATURES.get(tema)
+    if defaults is None:
+        # se tema sconosciuto, usa normale
+        defaults = THEME_FEATURES.get('normale', {})
+    return dict(defaults)
+
+
+# Mappa tema -> nome file immagine per l'annuncio della partita.
+# I file devono trovarsi nella stessa cartella del progetto (lo stesso folder di questi file .py).
+THEME_ANNOUNCEMENT_PHOTOS = {
+    "normale": "normale.png",
+    "harry_potter": "harry.png",
+}
+
+def get_announcement_photo(tema: str = 'normale'):
+    """Ritorna il percorso assoluto del file immagine per l'annuncio del tema, o None se non esiste.
+
+    Usa i nomi definiti in `THEME_ANNOUNCEMENT_PHOTOS` localizzati nella cartella del progetto.
+    """
+    filename = THEME_ANNOUNCEMENT_PHOTOS.get(tema) or THEME_ANNOUNCEMENT_PHOTOS.get('normale')
+    if not filename:
+        return None
+    # Cartella del progetto (dove risiedono i file .py principali)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.join(base_dir, filename)
+    if os.path.exists(full_path):
+        return full_path
+    return None
