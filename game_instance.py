@@ -132,10 +132,13 @@ class TombolaGame:
                     self.group_settings_ts = now
                 except Exception:
                     group_conf = {}
-            feature_states = group_conf.get("bonus_malus_settings", {
-                "104": True, "110": True, "666": True, "404": True, "Tombolino": True
-            })
-
+            from variabili import _DEFAULT_BONUS_STATES
+            feature_states = _DEFAULT_BONUS_STATES.copy()
+            
+            # Sovrascrivi con le impostazioni del gruppo se presenti
+            saved_settings = group_conf.get("bonus_malus_settings", {})
+            if saved_settings:
+                feature_states.update(saved_settings)
             selected_number = None
             idx_to_pop = -1
 
@@ -222,98 +225,90 @@ class TombolaGame:
                 )
 
     async def check_for_tombola(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
-            if not self.game_active:
-                return True
+        if not self.game_active:
+            return True
 
-            group_conf = load_group_settings_from_firebase(self.chat_id).get(str(self.chat_id), {})
-            tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
-            tombola_points = self.custom_scores.get("tombola", premi_default["tombola"])
+        group_conf = load_group_settings_from_firebase(self.chat_id).get(str(self.chat_id), {})
+        tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
+        tombola_points = self.custom_scores.get("tombola", premi_default["tombola"])
+        
+        # Recupero tema
+        theme_conf = load_group_settings_from_firebase(self.chat_id)
+        tema = theme_conf.get(str(self.chat_id), {}).get('tema', 'normale')
 
-            group_settings = load_group_settings_from_firebase(self.chat_id)
-            tema = group_settings.get(str(self.chat_id), {}).get('tema', 'normale')
+        # Lista per accumulare i vincitori simultanei di questo turno
+        round_winners = []
 
-            for user_id, cartella in self.players.items():
-                if user_id not in self.players_in_game:
-                    continue
+        for user_id, cartella in self.players.items():
+            if user_id not in self.players_in_game:
+                continue
+            
+            # Se ha già vinto la tombola principale, saltalo (a meno che non gestiamo plurivincite diverse)
+            if self.tombola_winner is not None and user_id == self.tombola_winner:
+                continue
 
-                if self.tombola_winner is not None and user_id == self.tombola_winner:
-                    continue
+            is_tombola = all(marked for riga in cartella for _, marked in riga.items())
+            if is_tombola:
+                round_winners.append(user_id)
 
-                is_tombola = all(marked for riga in cartella for _, marked in riga.items())
-                if not is_tombola:
-                    continue
-
-                if self.tombola_winner is None:
-                    self.tombola_winner = user_id
-                    self.tombole_fatte += 1
-                    raw_username = self.usernames.get(user_id, f"Utente_{user_id}")
-                    escaped_username = escape_markdown(raw_username, version=2)
-
-                    if tombolino_active:
-                        points_awarded = tombola_points
-                        extra = ", la partita prosegue per il tombolino"
-                        game_should_end = False
-                    elif tombolino_active and len(self.players_in_game) == 1:
-                        points_awarded = tombola_points
-                        extra = " e la partita è terminata"
-                        game_should_end = True
-                    else:
-                        points_awarded = tombola_points
-                        extra = " e la partita è terminata\\."
-                        game_should_end = True
-
-                    announcement_text = get_testo_tematizzato('tombola_prima', tema, escaped_username=escaped_username, extra=extra)
-
-                    self.add_score(user_id, points_awarded)
-                    try:
-                        await context.bot.send_message(
-                            chat_id=self.chat_id,
-                            text=announcement_text,
-                            parse_mode=ParseMode.MARKDOWN_V2,
-                            message_thread_id=self.thread_id
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"Errore nell'annunciare la prima tombola per {raw_username} in chat {self.chat_id}: {e}"
-                        )
-
-                    if game_should_end:
-                        self.game_active = False
-                        return True
-                    else:
-                        return False  
-
-                self.tombole_fatte += 1
-                raw_username = self.usernames.get(user_id, f"Utente_{user_id}")
-                escaped_username = escape_markdown(raw_username, version=2)
-                points_awarded = tombola_points // 2
-                announcement_text = get_testo_tematizzato('tombolino', tema, escaped_username=escaped_username)
-                game_should_end = True
-
-                self.add_score(user_id, points_awarded)
-                logger.info(
-                    f"Tombolino per {raw_username} (ID: {user_id}) in chat {self.chat_id}. "
-                    f"Tombole fatte: {self.tombole_fatte}. Punti: {points_awarded}"
-                )
-
-                try:
-                    await context.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=announcement_text,
-                        parse_mode=ParseMode.MARKDOWN_V2,
-                        message_thread_id=self.thread_id
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Errore nell'annunciare il tombolino per {raw_username} in chat {self.chat_id}: {e}"
-                    )
-
-                if game_should_end:
-                    self.game_active = False
-                    return True
-
+        if not round_winners:
             return False
 
+        game_over = False
+        
+        # Gestione vincitori trovati
+        for winner_id in round_winners:
+            raw_username = self.usernames.get(winner_id, f"Utente_{winner_id}")
+            escaped_username = escape_markdown(raw_username, version=2)
+
+            # CASO 1: Prima Tombola in assoluto
+            if self.tombola_winner is None:
+                self.tombola_winner = winner_id # Il primo della lista diventa il "titolare"
+                self.tombole_fatte += 1
+                
+                if tombolino_active:
+                    points_awarded = tombola_points
+                    extra = ", la partita prosegue per il tombolino"
+                    game_over = False # Si continua per il tombolino
+                else:
+                    points_awarded = tombola_points
+                    extra = " e la partita è terminata\\."
+                    game_over = True # Finisce qui
+
+                announcement_text = get_testo_tematizzato('tombola_prima', tema, escaped_username=escaped_username, extra=extra)
+                self.add_score(winner_id, points_awarded)
+                
+                await context.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=announcement_text,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=self.thread_id
+                )
+
+            # CASO 2: Tombolino (o seconda tombola se simultanea alla prima ma gestita dopo nel loop)
+            else:
+                self.tombole_fatte += 1
+                points_awarded = tombola_points // 2
+                announcement_text = get_testo_tematizzato('tombolino', tema, escaped_username=escaped_username)
+                
+                # Se siamo qui, il gioco deve finire (o perché è tombolino, o perché tombolino era disattivo e questo è un ex-aequo)
+                game_over = True 
+
+                self.add_score(winner_id, points_awarded)
+                logger.info(f"Tombolino/Ex-Aequo per {raw_username} (ID: {winner_id})")
+
+                await context.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=announcement_text,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    message_thread_id=self.thread_id
+                )
+
+        if game_over:
+            self.game_active = False
+            return True
+
+        return False
     async def check_winner(self, user_id, username_raw, context: ContextTypes.DEFAULT_TYPE):
         if not self.game_active or self.game_interrupted:
             return
