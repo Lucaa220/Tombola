@@ -79,6 +79,8 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "classifica_finale":"🏆 Classifica finale:\n\n" + "{lines}",
             "reset_classifica_solo_admin":"🚫 Solo gli amministratori possono resettare la classifica.",
             "messaggio_reset_classifica":"_🚾 Complimenti hai scartato tutti i punteggi\\._",
+            "tombola_prima": "_🏆 @{escaped_username} ha fatto tombola{extra}_",
+            "tombolino": "_🏆 @{escaped_username} ha fatto tombolino\\!_",
             "regole_introduzione":(
                         "*_ℹ️ REGOLAMENTO\\:_*\n\n"
                         "_👋 Benvenuto nel regolamento, qui potrai navigare grazie ai bottoni tra le varie sezioni_ "
