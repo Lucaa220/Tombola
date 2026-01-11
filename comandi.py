@@ -532,7 +532,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"[dm_if_present] Errore nell'invio DM a {user_id} ({escaped_name_for_log}): {e}")
 
-            await current_game_instance.check_winner(user_id, name, bot_context, tema) # Passo tema anche a check_winner se necessario
+            await current_game_instance.check_winner(user_id, name, bot_context) # Passo tema anche a check_winner se necessario
 
     async def update_all_players_dm_and_check_minor_wins(current_game_instance, number_drawn, bot_context):
         # Filtra solo i giocatori che hanno effettivamente il numero
