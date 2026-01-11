@@ -56,7 +56,7 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
                         ),
             
             "gia_unito":"Sei già iscritto alla partita!",
-            "annuncio_unione":"*_👤 @{username} si è unito alla partita\\!_*",
+            "annuncio_unione":"*_👤 {username} si è unito alla partita\\!_*",
             "numero_estratto":"Numero estratto!",
             "partita_interrotta":"Partita interrotta!",
             "errore_invio_cartella":"Non riesco a inviarti la cartella in privato. Assicurati di aver avviato il bot.",
