@@ -265,7 +265,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_interaction(user_id, username, group_chat_id, query.data, group_name)
 
     group_settings = load_group_settings_from_firebase(group_chat_id)
-    tema = group_settings.get(str(group_chat_id), {}).get('tema', 'normale') # Recupero tema per messaggi dentro button
+    tema = group_settings.get(str(group_chat_id), {}).get('tema', 'normale') 
+    logger.info(f"Tema corrente: {tema}")
 
     if query.data == 'join_game':
         logger.debug(f"Processando join_game per user {user_id} in chat {group_chat_id}")
@@ -340,7 +341,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Invia UNICO annuncio nel gruppo
             if tema == 'harry_potter':
                 if update.effective_user.username:
-                    mention = f"@{update.effective_user.username}"
+                    user = esc(update.effective_user.username)
+                    mention = f"@{user}"
                 else:
                     mention = esc(update.effective_user.full_name)
                 house_disp = assigned_house or "Casata Sconosciuta"
@@ -354,19 +356,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         text_annuncio = get_testo_tematizzato('annuncio_smistamento', tema, escaped_username=escape_username, house=house_disp)
                         await context.bot.send_message(chat_id=group_chat_id, text=text_annuncio, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
                     game.announced_smistamento_users.add(user_id)
+        else:
+            if update.effective_user.username:
+                user = esc(update.effective_user.username)
+                escape_username = f"@{user}"
             else:
-                escape_username = esc(username)
-                # Only announce normal join once per user
-                if user_id not in getattr(game, 'announced_join_users', set()):
-                    await context.bot.send_message(
-                        chat_id=group_chat_id,
-                        text=get_testo_tematizzato('annuncio_unione', tema, username=escape_username),
-                        message_thread_id=thread_id,
-                        parse_mode=ParseMode.MARKDOWN_V2
-                    )
-                    game.announced_join_users.add(user_id)
-            await query.answer()  
-            return  
+                escape_username = esc(update.effective_user.full_name)
+            # Only announce normal join once per user
+            if user_id not in getattr(game, 'announced_join_users', set()):
+                await context.bot.send_message(
+                    chat_id=group_chat_id,
+                    text=get_testo_tematizzato('annuncio_unione', tema, username=escape_username),
+                    message_thread_id=thread_id,
+                    parse_mode=ParseMode.MARKDOWN_V2
+                )
+                game.announced_join_users.add(user_id)
+        await query.answer()  
+        return  
 
     elif query.data == 'draw_number':
         await estrai(update, context)
@@ -529,17 +535,38 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await current_game_instance.check_winner(user_id, name, bot_context, tema) # Passo tema anche a check_winner se necessario
 
     async def update_all_players_dm_and_check_minor_wins(current_game_instance, number_drawn, bot_context):
-        tasks = [
-            asyncio.create_task(dm_if_present(uid, number_drawn, current_game_instance, bot_context))
-            for uid in current_game_instance.players_in_game
-        ]
-        if tasks:
+        # Filtra solo i giocatori che hanno effettivamente il numero
+        players_to_notify = []
+        for uid in current_game_instance.players_in_game:
+            # Simuliamo il controllo se l'utente ha il numero per evitare chiamate inutili
+            # Nota: update_cartella ritorna True se il numero c'era.
+            # Dobbiamo però chiamarlo dentro dm_if_present per logica attuale.
+            # Procediamo a blocchi.
+            players_to_notify.append(uid)
+
+        if not players_to_notify:
+            return
+
+        # Elabora a blocchi di 10 utenti per volta
+        chunk_size = 10
+        for i in range(0, len(players_to_notify), chunk_size):
+            chunk = players_to_notify[i:i + chunk_size]
+            tasks = [
+                asyncio.create_task(dm_if_present(uid, number_drawn, current_game_instance, bot_context))
+                for uid in chunk
+            ]
+            
+            # Esegui il blocco e gestisci errori
             results = await asyncio.gather(*tasks, return_exceptions=True)
+            
             for res_idx, err_or_res in enumerate(results):
                 if isinstance(err_or_res, Exception):
-                    player_id_involved = list(current_game_instance.players_in_game)[res_idx]
-        else:
-            logger.info(f"[update_all_players_dm] Nessun giocatore a cui inviare DM per il numero {number_drawn} in chat {current_game_instance.chat_id}.")
+                    uid_err = chunk[res_idx]
+                    logger.error(f"Errore DM per {uid_err}: {err_or_res}")
+
+            # Pausa anti-flood tra i blocchi (solo se ce ne sono altri)
+            if i + chunk_size < len(players_to_notify):
+                await asyncio.sleep(1.5)
 
     async def extract_loop():
         nonlocal game, feature_states, mode
