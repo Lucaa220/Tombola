@@ -371,6 +371,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN_V2
                 )
                 game.announced_join_users.add(user_id)
+            
+            await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
+
         await query.answer()  
         return  
 
