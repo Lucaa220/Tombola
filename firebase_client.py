@@ -67,7 +67,7 @@ if not (DATABASE_URL.startswith("https://") and ("firebaseio" in DATABASE_URL or
 # Inizializza Firebase Admin usando il path al file di service account
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate
+        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
         firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
         logger.info("✅ Firebase Admin inizializzato correttamente.")
     except Exception as e:
