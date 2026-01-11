@@ -12,13 +12,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# --------------------------------------------------------------------
-# 1. Configurazione iniziale Firebase Admin
-# - supporta `GOOGLE_APPLICATION_CREDENTIALS` sia come percorso a file
-#   sia come contenuto JSON direttamente nella variabile d'ambiente.
-# - se viene passato JSON, viene scritto in un file temporaneo sicuro.
-# - non logghiamo mai il percorso completo del file di credenziali.
-# --------------------------------------------------------------------
+def check_firebase_initialized():
+    if not firebase_admin._apps:
+        raise RuntimeError("Firebase non inizializzato. Controlla credenziali.")
+
 def _masked_path(p: str) -> str:
     # Non rivelare il path completo nei log: mostra solo il nome file
     try:
@@ -50,7 +47,7 @@ else:
         tf.flush()
         tf.close()
         _temp_sa_file = tf.name
-        SERVICE_ACCOUNT_PATH = _temp_sa_file
+        SERVICE_ACCOUNT_PATH = sa_content
     except json.JSONDecodeError:
         # Non è né un file né un JSON valido
         raise RuntimeError(
@@ -70,7 +67,7 @@ if not (DATABASE_URL.startswith("https://") and ("firebaseio" in DATABASE_URL or
 # Inizializza Firebase Admin usando il path al file di service account
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+        cred = credentials.Certificate
         firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
         logger.info("✅ Firebase Admin inizializzato correttamente.")
     except Exception as e:
@@ -102,6 +99,7 @@ def _retry_on_firebase_error(max_retries: int = 3, base_delay: float = 0.5, back
 
 @_retry_on_firebase_error()
 def load_classifica_from_firebase(group_id: int) -> dict:
+    check_firebase_initialized()
     ref = db.reference(f"classifiche/{group_id}")
     data = ref.get()
     return data if isinstance(data, dict) else {}
@@ -109,6 +107,7 @@ def load_classifica_from_firebase(group_id: int) -> dict:
 
 @_retry_on_firebase_error()
 def save_classifica_to_firebase(group_id: int, scores: dict) -> None:
+    check_firebase_initialized()
     ref = db.reference(f"classifiche/{group_id}")
     ref.set(scores or {})
     logger.info(f"Classifica per group_id={group_id} salvata correttamente.")
@@ -118,6 +117,7 @@ def save_classifica_to_firebase(group_id: int, scores: dict) -> None:
 # --------------------------------------------------------------------
 @_retry_on_firebase_error()
 def load_all_group_settings_from_firebase() -> dict:
+    check_firebase_initialized()
     ref = db.reference("group_settings")
     data = ref.get()
     return data if isinstance(data, dict) else {}
@@ -125,6 +125,7 @@ def load_all_group_settings_from_firebase() -> dict:
 
 @_retry_on_firebase_error()
 def load_group_settings_from_firebase(group_id: int) -> dict:
+    check_firebase_initialized()
     ref = db.reference(f"group_settings/{group_id}")
     data = ref.get()
     return data if isinstance(data, dict) else {}
@@ -132,6 +133,7 @@ def load_group_settings_from_firebase(group_id: int) -> dict:
 
 @_retry_on_firebase_error()
 def save_group_settings_to_firebase(group_id: int, settings: dict) -> None:
+    check_firebase_initialized()
     ref = db.reference(f"group_settings/{group_id}")
     ref.set(settings or {})
     logger.info(f"Group settings per group_id={group_id} salvate correttamente.")
@@ -139,6 +141,7 @@ def save_group_settings_to_firebase(group_id: int, settings: dict) -> None:
 
 @_retry_on_firebase_error()
 def save_all_group_settings_to_firebase(all_settings: dict) -> None:
+    check_firebase_initialized()
     ref = db.reference("group_settings")
     ref.set(all_settings or {})
     logger.info("Tutte le impostazioni di gruppo salvate correttamente.")
@@ -148,8 +151,9 @@ def save_all_group_settings_to_firebase(all_settings: dict) -> None:
 # --------------------------------------------------------------------
 @_retry_on_firebase_error()
 def add_log_entry(group_id: int, entry: dict) -> None:
+    check_firebase_initialized()
     ref = db.reference(f"logs/{group_id}")
     new_ref = ref.push()
     new_ref.set(entry)
     # Non loggare l'intero entry payload per non esporre dati sensibili
-    logger.info(f"Log entry aggiunta per group_id={group_id}")
+    logger.info(f"Log entry aggiunta per group_id={group_id}") 
