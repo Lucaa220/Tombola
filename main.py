@@ -253,7 +253,8 @@ async def show_tema_menu(query, chat_id_str, settings, tema):
     keyboard = [
         [
             InlineKeyboardButton(f"Normale {'✅' if current_tema == 'normale' else ''}", callback_data='set_tema_normale'),
-            InlineKeyboardButton(f"Harry Potter {'✅' if current_tema == 'harry_potter' else ''}", callback_data='set_tema_harry_potter')
+            InlineKeyboardButton(f"Harry Potter {'✅' if current_tema == 'harry_potter' else ''}", callback_data='set_tema_harry_potter')],
+            [InlineKeyboardButton(f"Marvel {'✅' if current_tema == 'marvel' else ''}", callback_data='set_tema_marvel')
         ],
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
@@ -282,7 +283,6 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = query.data
     logger.info(f"[settings_button] Azione '{action}' per chat {chat_id_str}")
 
-    # Chiamate alle funzioni di visualizzazione menu con il tema
     if action == 'menu_estrazione':
         await show_extraction_menu(query, chat_id_str, settings, tema)
         logger.info(f"Azione {action} completata")
@@ -313,6 +313,11 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if action == 'set_tema_harry_potter':
         settings[chat_id_str]['tema'] = 'harry_potter'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
+    if action == 'set_tema_marvel':
+        settings[chat_id_str]['tema'] = 'marvel'
         save_group_settings_to_firebase(chat_id_obj, settings)
         await show_tema_menu(query, chat_id_str, settings, tema)
         return
