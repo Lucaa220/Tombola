@@ -198,9 +198,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # Invia la cartella in privato usando la funzione centralizzata (gestisce fallback)
                     await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
 
-                    # Ora invia UNICO annuncio SOLO al gruppo: se tema Harry Potter usa il formato richiesto
-                    # Assicurati che gli annunci vengano inviati solo una volta per utente
-                    # Per Harry Potter, annuncia lo smistamento una volta; altrimenti annuncia l'unione una volta
                     if tema == 'harry_potter':
                         if user_id not in getattr(game, 'announced_smistamento_users', set()):
                             # preferiamo @username se disponibile
@@ -355,6 +352,71 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         escape_username = esc(username)
                         text_annuncio = get_testo_tematizzato('annuncio_smistamento', tema, escaped_username=escape_username, house=house_disp)
                         await context.bot.send_message(chat_id=group_chat_id, text=text_annuncio, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+                    game.announced_smistamento_users.add(user_id)
+        elif tema == 'marvel':
+            # Inizializza il dizionario se non esiste
+            if not getattr(game, 'user_houses', None):
+                game.user_houses = {}
+            
+            assigned_house = game.user_houses.get(user_id)
+            
+            # Se l'utente non ha ancora un team, assegnane uno
+            if not assigned_house:
+                # Lista dei Team Marvel
+                marvel_teams = [ "Iron Man 🦾", "Captain America 🛡️", "Thor 🔨", "Hulk 💪", "Black Widow 🕷️", "Hawkeye 🏹", "Vision 🤖",
+                                "Scarlet Witch 🔮", "Falcon 🦅", "Winter Soldier 🥷", "Ant-Man 🐜", "Wasp 🐝", "Captain Marvel ✨", "War Machine 🛡️",
+                                "Spider-Man 🕸️", "Miles Morales 🕷️", "Spider-Gwen 🕸️", "Black Panther 🐆", "Doctor Strange 🪄", "Wong 🧙", "Shang-Chi 🥋",
+                                "She-Hulk 🟢", "Moon Knight 🌙", "Blade 🗡️", "Ghost Rider 🔥", "Silver Surfer 🪐", "Adam Warlock 🌟", "Hercules 🏺",
+                                "Sentry ⚡", "Punisher 💀", "Daredevil 👨‍🦯", "Jessica Jones 🕵️‍♀️", "Luke Cage 🛡️", "Iron Fist 🥋", "Elektra 🗡️",
+                                "Black Cat 🐈‍⬛", "Mister Fantastic 🧠", "Invisible Woman 🫧", "Human Torch 🔥", "Thing 🪨", "Professor X 🧠", "Cyclops 👁️",
+                                "Jean Grey 🔥", "Wolverine 🐾", "Storm ⛈️", "Beast 🧪", "Rogue 🦋", "Gambit ♠️", "Nightcrawler 💨",
+                                "Colossus 🧱", "Iceman ❄️", "Jubilee 🎆", "Kitty Pryde 🪄", "Psylocke 🔪", "Magneto 🧲", "Star-Lord 🎧",
+                                "Gamora 🗡️", "Drax 💪", "Rocket 🦝", "Groot 🌳", "Mantis 🐛", "Nebula 🤖", "Yondu 🎶",
+                                "Okoye 🗡️", "Shuri 🧠", "Ms. Marvel 🧕", "Captain Britain 🇬🇧", "Squirrel Girl 🐿️", "Moon Girl 🧠", "Devil Dinosaur 🦖",
+                                "Cloak ⚫", "Dagger ⚪", "Wiccan ✨", "Speed ⚡", "Kate Bishop 🏹", "Echo 🦻", "America Chavez ⭐",
+                                "Quasar 🌌", "Beta Ray Bill 🐎", "Silk 🕸️"
+                            ]
+
+                assigned_house = random.choice(marvel_teams)
+                
+                game.user_houses[user_id] = assigned_house
+                
+                # Salvataggio su Firebase
+                try:
+                    conf = load_group_settings_from_firebase(group_chat_id) or {}
+                    conf_user_houses = conf.get('user_houses', {})
+                    conf_user_houses[str(user_id)] = assigned_house
+                    conf['user_houses'] = conf_user_houses
+                    from firebase_client import save_group_settings_to_firebase
+                    save_group_settings_to_firebase(group_chat_id, conf)
+                except Exception:
+                    pass
+
+            # Invia la cartella in DM
+            await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
+
+            # Annuncio nel gruppo
+            if tema == 'marvel':
+                if update.effective_user.username:
+                    user = esc(update.effective_user.username)
+                    mention = f"@{user}"
+                else:
+                    mention = esc(update.effective_user.full_name)
+                
+                team_disp = assigned_house or "Team Sconosciuto"
+                
+                # Messaggio tematizzato Marvel
+                group_msg = f"*_🧬 {mention} è stato reclutato da Nick Fury nel team di {team_disp}\\!_*"
+                
+                # Controlla se l'annuncio è già stato fatto per questo utente
+                if user_id not in getattr(game, 'announced_smistamento_users', set()):
+                    try:
+                        await context.bot.send_message(chat_id=group_chat_id, text=group_msg, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+                    except Exception:
+                        # Fallback in caso di errore (uso generico o template)
+                        pass
+                    
+                    # Aggiunge l'utente al set degli annunciati
                     game.announced_smistamento_users.add(user_id)
         else:
             if update.effective_user.username:
@@ -541,17 +603,13 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Filtra solo i giocatori che hanno effettivamente il numero
         players_to_notify = []
         for uid in current_game_instance.players_in_game:
-            # Simuliamo il controllo se l'utente ha il numero per evitare chiamate inutili
-            # Nota: update_cartella ritorna True se il numero c'era.
-            # Dobbiamo però chiamarlo dentro dm_if_present per logica attuale.
-            # Procediamo a blocchi.
             players_to_notify.append(uid)
 
         if not players_to_notify:
             return
 
         # Elabora a blocchi di 10 utenti per volta
-        chunk_size = 10
+        chunk_size = 25
         for i in range(0, len(players_to_notify), chunk_size):
             chunk = players_to_notify[i:i + chunk_size]
             tasks = [
@@ -569,7 +627,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Pausa anti-flood tra i blocchi (solo se ce ne sono altri)
             if i + chunk_size < len(players_to_notify):
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(0.5)
 
     async def extract_loop():
         nonlocal game, feature_states, mode
@@ -682,7 +740,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             logger.error(f"[extract_loop] Errore invio sticker bonus/malus {current_number_val} a chat {game.chat_id}: {e}")
 
             # Invio sticker speciali per 69 e 90 (saltare se tema == 'harry_potter')
-            if current_number_val in [69, 90] and tema != 'harry_potter':
+            if current_number_val in [69, 90] and tema not in ['harry_potter', 'marvel']:
                 sticker_special = get_sticker_for_number(current_number_val, tema)
                 if sticker_special:
                     try:
