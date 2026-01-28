@@ -18,8 +18,16 @@ THEME_BONUS_NAMES = {
         "bonus_104_name": "Protego",
         "malus_404_name": "Depulso",
         "tombolino_name": "Tombolino Magico",
+    },
+    "marvel": {
+        "bonus_110_name": "Scudo di Captain America",
+        "malus_666_name": "Gemme del Potere",
+        "bonus_104_name": "Martello di Thor",
+        "malus_404_name": "Multiverso",
+        "tombolino_name": "Tombolino Marvel",
     }
 }
+
 
 def get_feature_name(feature_key: str, tema: str = 'normale') -> str:
     mapping = {
@@ -211,7 +219,11 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "nessun_giocatore_unito":"*🤷‍♂️ Nessuno si è unito alla partita ancora\\!*",
             "numero_giocatori_attivi":"*👥 Utenti in partita\\: {count}*",
             "nessuna_classifica_disponibile":"*📊 Nessuna classifica disponibile\\.*",
-            "testo_classifica":"🏆 Classifica finale:\n\n" + "{lines}",
+            "testo_classifica": "🏆 Classifica finale:\n\n" + "{lines}",
+            "vincitore_ambo": "_🏆 @{escaped} ha fatto ambo\\!_",
+            "vincitore_terno": "_🏆 @{escaped} ha fatto terno\\!_",
+            "vincitore_quaterna": "_🏆 @{escaped} ha fatto quaterna\\!_",
+            "vincitore_cinquina": "_🏆 @{escaped} ha fatto cinquina\\!_",
         },
         "harry_potter": {
             "solo_admin": "🚫 Solo i Capitani di Squadra possono dare il via al match.",
@@ -234,7 +246,6 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
                 "poi lancia /trombola per dare inizio allo scontro aereo\\! _Ricorda\\: chi cattura il Boccino vince per la sua Casa\\.\\.\\._"
             ),
             "gia_unito": "🧹 Sei già in volo\\! La tua scopa non può esistere in due punti contemporaneamente\\.",
-            "annuncio_unione": "*_✨ @{username} è salito sulla sua Nimbus 2000\\!_*",
             "annuncio_smistamento": "*_🎩 {escaped_username} è salito sulla sua Nimbus 2000 per la casa {house}\\!_*",
             "numero_estratto": "✨ *REVELIO NUMERUS!*",
             "partita_interrotta": "*🌩️ MATCH INTERROTTO DAL PRESIDE!*",
@@ -270,9 +281,6 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
                 "*Vai su @Tombola2_Bot e incanta il bot per riceverle\\.*"
             ),
             "messaggio_invio_regole_privato": "_📬 @{escaped_username}, il tuo Manuale del Giocatore è stato recapitato da un Gufo\\!_",
-            "tombola_prima": "_🏆 @{escaped_username} ha fatto tombola{extra}_",
-            "tombolino": "_🏆 @{escaped_username} ha fatto tombolino\\!_",
-
             "regole_punteggi": (
                 "🏆✨ *Coppa delle Case di Hogwarts* ✨🏆\n\n"
                 "_Ogni Casa ottiene punti grazie a imprese degne dei migliori maghi e streghe:_\n\n"
@@ -291,8 +299,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
                 "\\(le scope volano da sole\\) o manualmente \\(solo i Capitani controllano il gioco\\)\\:_"
             ),
             "descrizione_admin": (
-                "_⚠️ Attenzione\\! Dare potere a tutti gli studenti è pericoloso come un Drago in biblioteca\\. "
-                "Confermi di voler permettere a chiunque di controllare le scope\\?_"
+                "_⚠️ Attenzione\\! Alcuni incantesimi sono riservati ai maghi più esperti\\. "
+                "Con Sì, solo Professori e Capitani delle Case potranno usarli\\. "
+                "Con No, tutti gli studenti di Hogwarts avranno accesso\\._"
             ),
             "descrizione_premi": (
                 "_💎 Benvenuto nella Stanza dei Punteggi, dove ogni Casa lotta per la gloria\\! "
@@ -383,6 +392,171 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "testo_classifica": "*🏆 Classifica Coppa delle Case\\:*\n\n{lines}",
             "classifica_finale": "*🏆 Classifica Coppa delle Case\\:*\n\n{lines}",
             "nessuna_classifica_disponibile": "*📜 La Pergamena dei Punteggi è vuota\\!*",
+            "vincitore_ambo": "_🏆 @{escaped} ha distrutto il Diario di Tom Riddle e fa ambo\\!_",
+            "vincitore_terno": "_🏆 @{escaped} ha distrutto l'Anello di Marvoli Gaunt e fa terno\\!_",
+            "vincitore_quaterna": "_🏆 @{escaped} ha distrutto il Medaglione Serpeverde e fa quaterna\\!_",
+            "vincitore_cinquina": "_🏆 @{escaped}  ha distrutto la Coppa di Tassorosso e il Diadema di Corvonero e fa cinquina\\!_",
+            "tombola_prima": "_🏆 @{escaped_username} distrugge tutti gli Horcrux guadagnandosi, oltre alla tombola, il duello finale con ColuiCheNonDeveEssereNominato{extra}_",
+            "tombolino": "_🏆 @{escaped_username} credeva che uccidendo Nagini potesse uccidere finalmente Lord Voldemort, ma la pietra filosofale fa risorgere Harry e distrugge i sogni di gloria, ma almeno conquista il tombolino\\!_",
+        },
+        "marvel": {
+            "solo_admin": "🔒 Accesso negato. Livello di sicurezza S.H.I.E.L.D. insufficiente.",
+            "annuncio_partita": (
+                "*🚨 INIZIATIVA AVENGERS ATTIVATA\\!*\n\n"
+                "_🕸️ Premi 'Unisciti' per entrare in squadra, ma assicurati che J\\.A\\.R\\.V\\.I\\.S\\. \\(il bot\\) sia online_\n\n"
+                "_🕶️ Direttore Fury, quando la squadra è schierata avvia la missione con /estrai\\. Se devi abbandonare usa /stop "
+                "e che vinca il Vendicatore più forte\\! Usa /regolo per consultare il database\\._"
+            ),
+            "join_non_autorizzato": "🚧 Accesso bloccato dalla Damage Control.",
+            "non_membro_gruppo": "🕵️ Non sei nei file dello S.H.I.E.L.D.",
+            "partita_non_attiva": "💤 Nessuna minaccia livello Avengers rilevata.",
+            "partita_iniziata": "⏳ Portale temporale chiuso. Missione già operativa, attendi la prossima variante!",
+            "unito_partita": "*🦾 Armatura indossata nel settore {group_text}, ecco il tuo HUD tattico\\:*\n\n{escaped_cartella}",
+            "non_unito_ora": "🚀 Il Quinjet è già decollato\\.",
+            "benvenuto": (
+                "*Benvenuto alla Stark Tower [{escaped_nickname}](https://t.me/{escaped_username})*\\!\n\n"
+                "Questo è il protocollo ufficiale di [Monopoly Go Contest e Regali]({group_link})\\. "
+                "Integralo nel tuo sistema e gioca con gli altri eroi\\. "
+                "Usa /impostami per calibrare i sistemi, e /trombola per scatenare il Ragnarok\\.\\.\\. ehm, la partita\\.\n\n"
+                "_🅰️vengers Uniti\\!_"
+            ),
+            "gia_unito": "📝 Sei già negli Accordi di Sokovia!",
+            "annuncio_smistamento": "*_🧬 {mention} è stato reclutato da Nick Fury nel team di {team_disp}\\!_*",
+            "numero_estratto": "🔮 Nuova visione dal futuro!",
+            "partita_interrotta": "💥 Missione compromessa!",
+            "errore_invio_cartella": "🤖 Errore di connessione con J.A.R.V.I.S. Assicurati di aver avviato il bot.",
+            "non_in_partita": "⛔️ Civile, allontanati dalla zona di scontro!",
+            "numero_estratto_annuncio": "_⚛️ Reattore Arc al 100\\%\\. Numero estratto\\: **{current_number_val:02}**_",
+            "stop_solo_admin": "🛡️ Solo il Consiglio può revocare la missione.",
+            "messaggio_stop": "*🫰 Thanos ha schioccato le dita\\: gioco polverizzato*",
+            "messaggio_cartella": "*🦾 Sistemi online nel gruppo {group_text}, ecco i codici\\:*\n\n{escaped_cartella}",
+            "mostra_cartella_alert": "Il tuo equipaggiamento Mark-85:\n\n{formatted_cartella}",
+            "estrazione_solo_admin": "🧤 Solo chi ha le Gemme può manipolare la realtà (estrarre).",
+            "nessuna_partita_attiva_per_estrazione": "🧊 Sistemi congelati come Cap nel ghiaccio. Avvia prima una partita.",
+            "numero_avuto_dm": "*🎯 Colpo a segno\\! Avevi il numero {number_drawn:02}\\!*\n\n{escaped_cart_text}",
+            "tutti_numeri_estratti": "🏁 Endgame. Tutte le timeline sono state esplorate.",
+            "bonus_110": "*🛡️ {bonus_110_name}\\!*\n\n_🇺🇸 @{user_affected_escaped_name} alza il braccio appena in tempo\\! Il disco di Vibranio assorbe completamente l'impatto nemico e restituisce il colpo con un rimbombo metallico\\! Guadagna {punti_val} punti\\._",
+            "malus_666": "*🔮 {malus_666_name}\\!*\n\n_⚡ @{user_affected_escaped_name} ha provato a brandire il Guanto dell'Infinito, ma il potere è troppo grande per un solo mortale\\! L'energia cosmica brucia attraverso l'armatura\\.\\.\\. Perde {punti_val} punti\\._",
+            "bonus_104": "*🌩️ {bonus_104_name}\\!*\n\n_🔨 Il cielo si oscura e @{user_affected_escaped_name} tende la mano\\.\\.\\. Mjolnir risponde alla chiamata\\! La prova è superata: è degno del potere di Thor\\! Un fulmine colpisce il campo e gli conferisce {punti_val} punti\\._",
+            "malus_404": "*🌀 {malus_404_name}\\!*\n\n_😵‍💫 Un incantesimo sbagliato apre una frattura nella realtà\\! @{user_affected_escaped_name} viene risucchiato in una timeline alternativa dove non ha mai giocato a Tombola\\. Prima di riuscire a tornare nel presente, perde {punti_val} punti\\._",            "partita_interrotta_no_punti": "🌫️ Punti svaniti nel Regno Quantico.",
+            "nessuna_classifica": "*💾 Nessun dato negli archivi Stark\\.*",
+            "classifica_finale": "🏆 Hall of Armor \\(Classifica\\)\\:\n\n" + "{lines}",
+            "reset_classifica_solo_admin": "💂‍♂️ Solo Odin può riscrivere la storia.",
+            "messaggio_reset_classifica": "_🧹 Protocollo 'Clean Slate' eseguito\\: memoria cancellata\\._",
+            "regole_introduzione": (
+                "*_ℹ️ DATABASE S\\.H\\.I\\.E\\.L\\.D\\.\\:_*\n\n"
+                "_👋 Salve recluta\\. Accedi ai dossier segreti tramite i bottoni qui sotto_ "
+                "_per comprendere la tecnologia aliena di questo bot\\._\n\n"
+                "_📡 Per comunicazioni criptate rivolgiti a @AssistenzaTombola2\\_Bot\\._ "
+                "_Chiama i rinforzi se rilevi bug nel sistema\\._\n\n"
+            ),
+            "errore_invio_regole_privato": (
+                "_📭 @{escaped_username} frequenza criptata non raggiungibile\\._\n"
+                "*Vai su @Tombola2_Bot e premi 'Avvia' per aprire il canale*"
+            ),
+            "messaggio_invio_regole_privato": "_📂 @{escaped_username} dossier Top Secret inviato in privato\\._",
+            "regole_punteggi": (
+                "*🏆 Taglie e Ricompense\\:*\n\n"
+                "_🔢 Qui definiamo il valore delle missioni\\. Ogni base ha le sue regole, "
+                "ma ecco i valori attuali per il settore {header}\\:_\n\n"
+                "1️⃣ *AMBO* vale {premi_ambo} punti\n"
+                "2️⃣ *TERNO* vale {premi_terno} punti\n"
+                "3️⃣ *QUATERNA* vale {premi_quaterna} punti\n"
+                "4️⃣ *CINQUINA* vale {premi_cinquina} punti\n"
+                "5️⃣ *TOMBOLA* vale {premi_tombola} punti\n\n"
+                "_👾 Inoltre, se attivo nel vostro universo\\:_\n\n"
+                "6️⃣ *TOMBOLINO* vale {premi_tombolino} punti\n"
+            ),
+            "regole_comandi": (
+                "*💻 Comandi dell'I\\.A\\.\\:*\n\n"
+                "_🎛️ Lista comandi vocali per l'armatura\\. Alcuni richiedono autorizzazione Alpha, altri sono per tutte le reclute\\._\n\n"
+                "*1️⃣ /trombola*\n"
+                "_Protocollo Alpha\\. Avvia la missione\\. Richiede livello Admin\\._\n"
+                "*2️⃣ /impostami*\n"
+                "_Apre l'interfaccia olografica per modificare i parametri\\._\n"
+                "*3️⃣ /classifiga*\n"
+                "_Mostra gli eroi più forti del momento\\._\n"
+                "*4️⃣ /azzera*\n"
+                "_Formatta il server\\. Attenzione\\: nemmeno la Gemma del Tempo recupera questi dati\\._\n"
+                "*5️⃣ /stop*\n"
+                "_Interruzione d'emergenza\\. Utile in caso di attacco Ultron\\._\n"
+                "*6️⃣ /estrai*\n"
+                "_Calcola le probabilità ed estrae un numero\\. Strange, tocca a te\\._\n"
+                "*7️⃣ /trombolatori*\n"
+                "_Scansione biometrica\\: conta gli eroi attivi sul campo\\._"
+            ),
+            "regole_unirsi": (
+                "*🎫 Arruolamento\\:*\n\n"
+                "_🖋️ Vuoi firmare e combattere\\? "
+                "Quando il Caposquadra lancia il segnale con /trombola, apparirà il bottone '🕸️ Unisciti'\\. "
+                "Sparaci una ragnatela sopra per ricevere l'equipaggiamento\\._"
+            ),
+            "regole_estrazione": (
+                "*🎱 Estrazione Quantica\\:*\n\n"
+                "_🔄 I numeri vanno da 1 a 90\\. Una volta estratto il primo, "
+                "l'I\\.A\\. segnerà tutto in automatico\\. Voi dovete solo sperare di essere nella timeline vincente "
+                "mentre l'Admin gestisce il flusso\\._"
+            ),
+            "regole_bonus_malus": (
+                "*☯️ Artefatti Cosmici \\(Bonus/Malus\\)\\:*\n\n"
+                "_🎰 Volete il caos\\? Attivate questi oggetti nelle impostazioni\\._\n"
+                "_🎲 Ciascuno di questi oggetti è nascosto nel Tesseract e una volta estratto colpirà un eroe a caso "
+                "modificando i suoi punti vitali \\(da 1 a 49\\)\\._\n\n"
+                "*1️⃣ {bonus_104_name}*\n"
+                "_Chiunque brandisca questo martello, se ne sarà degno, possiederà il potere di Thor\\! "
+                "Se il bot ti giudica degno, il fulmine colpirà il tuo punteggio aumentandolo\\._\n\n"
+                "*2️⃣ {malus_666_name}*\n"
+                "_Un potere troppo grande per i mortali\\. Se provi a impugnare il Guanto senza essere pronto, "
+                "l'energia cosmica ti si ritorcerà contro bruciando i tuoi punti\\._\n\n"
+                "*3️⃣ {bonus_110_name}*\n"
+                "_Fatto interamente in Vibranio\\. Se viene estratto, lo Scudo ti proteggerà dalla sfortuna "
+                "e assorbirà l'impatto cinetico convertendolo in punti extra\\._\n\n"
+                "*4️⃣ {malus_404_name}*\n"
+                "_Un'incursione tra universi\\. Se finisci in questa frattura della realtà, verrai risucchiato "
+                "in una timeline dove i tuoi punti non esistono\\._\n\n"                
+                "_⏯️ E non è finita\\. C'è una scena post\\-credit\\:_\n"
+                "*5️⃣ Tombolino Marvel*\n"
+                "_🥡 Premio di consolazione \\(Shawarma\\) per chi vince subito dopo il primo\\. Vale meno, ma hai salvato la città\\._"
+            ),
+            "impostazioni_solo_admin": "🔒 Accesso negato. Richiesta scansione retina Admin.",
+            "pannello_controllo": "*📱 Stark Industries OS*\n\n_📲 Quale sistema vuoi riconfigurare\\?_",
+            "descrizione_estrazione": (
+                "_⚙️ Vuoi che F\\.R\\.I\\.D\\.A\\.Y\\. estragga i numeri in automatico o preferisci farlo manualmente "
+                "come Strange che cerca la variante giusta\\? Scegli qui\\:_"
+            ),
+            "errore_aggiornamento_menu": "⚠️ Malfunzionamento nei circuiti. Riprova.",
+            "descrizione_admin": (
+                "_🔑 Vuoi dare le chiavi dell'armatura a tutti\\? È rischioso\\.\\.\\._ "
+                "_Premi 'No' per mantenere la gerarchia S\\.H\\.I\\.E\\.L\\.D\\. "
+                "Premi 'Sì' per la Civil War \\(tutti comandano\\)\\:_"
+            ),
+            "descrizione_premi": (
+                "_💰 Qui si decide il bottino\\. "
+                "Imposta il valore di ogni obiettivo e lascia che il destino agisca\\:_"
+            ),
+            "descrizione_bonus_malus": (
+                "_💎 Vuoi usare le Gemme dell'Infinito\\? Qui attivi/disattivi gli artefatti speciali "
+                "per rendere la classifica imprevedibile come Loki\\. Digita /regolo per info top\\-secret\\._"
+            ),
+            "descrizione_elimina_numeri": (
+                "_🧹 Protocollo Pulizia\\. Decidi se il bot deve auto\\-distruggere i messaggi "
+                "a fine missione per non lasciare tracce\\. Premi 'Sì' per modalità stealth\\._"
+            ),
+            "descrizione_tema": (
+                "_🎨 Personalizzazione Realtà\\. Decidi quale veste grafica applicare\\. "
+                "Il tema Marvel è inevitabile, ma hai libera scelta\\:_"
+            ),
+            "nessuna_partita_attiva_per_giocatori": "🦗 Sala riunioni vuota. Nessuna missione.",
+            "nessun_giocatore_unito": "*🤷‍♂️ Nessun Avenger ha risposto alla chiamata\\!*",
+            "numero_giocatori_attivi": "*👥 Eroi in campo\\: {count}*",
+            "nessuna_classifica_disponibile": "*📉 Database vuoto\\.*",
+            "testo_classifica": "🏆 Hall of Armor \\(Classifica Finale\\)\\:\n\n" + "{lines}",
+            "vincitore_ambo": "_🏆 @{escaped} ha conquistato le gemme del Potere e dello Spazio e ha fatto ambo\\!_",
+            "vincitore_terno": "_🏆 @{escaped} ha conquistato le gemme del Potere, dello Spazio e della Realtà e ha fatto terno\\!_",
+            "vincitore_quaterna": "_🏆 @{escaped} ha conquistato le gemme del Potere, dello Spazio, della Realtà e dell'Anima e ha fatto quaterna\\!_",
+            "vincitore_cinquina": "_🏆 @{escaped} ha conquistato le gemme del Potere, dello Spazio, della Realtà, dell'Anima e del Tempo e ha fatto cinquina\\!_",
+            "tombola_prima": "_🏆 @{escaped_username}  conquista tutte le gemme dell'Infinito e con il potere del Guanto ha fatto Tombola{extra}_",
+            "tombolino": "_🏆 @{escaped_username} riesce a scappare in tempo e non viene polverizzato dallo schiocco di Thanos e fa Tombolino\\!_",
         }
     }
     templates_for_tema = testi.get(tema, testi["normale"])
