@@ -261,16 +261,20 @@ THEME_STICKERS = {
         404: "CAACAgQAAxkBAAE1oq5oOXsd4KgUBf_Zprzwu8ewEMVqmAACowwAAkwu8FPV9fZm6lrXPDYE",
         "final": "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
     },
-    # Esempio di tema alternativo (puoi aggiungere sticker diversi per tema)
     "harry_potter": {
-        69: "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE",
-        90: "CAACAgEAAxkBAAEt32Vm8Z_GSXsHJiUjkcuuFKbOn6",
         104: "CAACAgIAAxkBAAE_7LZpU5bDar1npSTkGJlqp0ygTJm4GAACIDgAAnkR-UlJfPy0gvKZvjgE",
         666: "CAACAgIAAxkBAAE_7KhpU5ZYdl6gCPJJbWRWlZr58sKBjgACoTwAAo4TIUnVBy3VTBB29TgE",
         110: "CAACAgIAAxkBAAE_7LJpU5apvV5L8q71JtUyu4PPamjkVQACnx8AAlHF6Ur3ThPuK03feDgE",
         404: "CAACAgIAAxkBAAE_7KxpU5aQzYOCUEa48D86zDeBMPiyKwACzh4AAmVK6Eq3dJbJGEtjGDgE",
         "final": "CAACAgQAAxkBAAE_zK1pT63xXtFOFDAa_ekPN4o7-kMi8AACDAEAAr77Uw45cDSvFffnFjYE"
-    }
+    },
+    "marvel": {
+        104: "CAACAgQAAxkBAAFBPXhpdyvZ65rskI4TkqOczsXHGkUU9gAC0B4AAmPCuFOCAAFWFHRHotQ4BA",
+        666: "CAACAgQAAxkBAAFBPXVpdyvZxwRJ9fjYf0yoNrjsR9UhHgACYxsAAuZ-uVNse9UD8uL_HzgE",
+        110: "CAACAgQAAxkBAAFBPXdpdyvZrX1DM-mdBS_h7Ptvy1AoCAACmxgAAjvOuVNkI3y9RcGeAzgE",
+        404: "CAACAgQAAxkBAAFBPXZpdyvZ7sRdSnFNAaujDbicjmi-5wACJx0AAlMHuFOaB05GebevQTgE",
+        "final": "CAACAgQAAxkBAAFBPXRpdyvZMx-YAwUz7h7G1LOaRwtnKQACLxgAAkYpuVNu6DW7nmqblzgE"
+    },
 }
 
 def get_sticker_for_number(number, tema: str = 'normale'):
@@ -296,6 +300,9 @@ THEME_SETTINGS = {
     },
     "harry_potter": {
         "stickers_enabled": True
+    },
+    "marvel": {
+        "stickers_enabled": True
     }
 }
 
@@ -308,6 +315,13 @@ THEME_FEATURES = {
         "Tombolino": True
     },
     "harry_potter": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    },
+    "marvel": {
         "104": True,
         "110": True,
         "666": True,
@@ -354,6 +368,7 @@ def get_default_feature_states(tema: str = 'normale'):
 THEME_ANNOUNCEMENT_PHOTOS = {
     "normale": "normale.png",
     "harry_potter": "harry.png",
+    "marvel": "marvel.png",
 }
 
 def get_announcement_photo(tema: str = 'normale'):
