@@ -215,7 +215,12 @@ class TombolaGame:
                 escaped = escape_markdown(raw_username, version=2)
 
                 premio_lower = premio  # oppure premio.lower()
-                text_annuncio = f"_🏆 @{escaped} ha fatto {premio_lower}\\!_"
+
+                # Recupero tema per personalizzare l'annuncio
+                group_settings = load_group_settings_from_firebase(self.chat_id)
+                tema = group_settings.get(str(self.chat_id), {}).get('tema', 'normale')
+                chiave_annuncio = f'vincitore_{premio_lower}'
+                text_annuncio = get_testo_tematizzato(chiave_annuncio, tema, escaped=escaped)
 
                 await context.bot.send_message(
                     chat_id=self.chat_id,
