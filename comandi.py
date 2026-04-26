@@ -562,7 +562,9 @@ async def send_cartella_to_user(user_id, game, group_text, context, tema, assign
             button = InlineKeyboardMarkup([[InlineKeyboardButton("Apri chat privata", url=bot_link)]]) if bot_link else None
             user_display = game.usernames.get(user_id) or f"Utente_{user_id}"
             escape_user = esc(user_display)
-            fallback_text = get_testo_tematizzato('errore_invio_cartella', tema) + f" @{escape_user}"
+            error_text = get_testo_tematizzato('errore_invio_cartella', tema)
+            escape_error = esc(error_text)
+            fallback_text = f"{escape_error} @{escape_user}"
             await context.bot.send_message(
                 chat_id=game.chat_id,
                 text=fallback_text,
