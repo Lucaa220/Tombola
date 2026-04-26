@@ -7,20 +7,12 @@ import asyncio
 import time
 from dotenv import load_dotenv
 
-# --------------------------------------------------------------------
-# 1. Impostazioni logger e caricamento variabili d’ambiente
-# --------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# --------------------------------------------------------------------
-# 2. Variabili globali preesistenti
-# --------------------------------------------------------------------
 chat_id_global = None
 thread_id_global = None
-# OWNER_USER_ID ora viene preso esclusivamente da variabile d'ambiente opzionale.
-# Se non impostata, rimane None (caller deve gestire l'assenza).
 owner_env = os.getenv('OWNER_USER_ID')
 try:
     OWNER_USER_ID = int(owner_env) if owner_env is not None else None
@@ -38,20 +30,13 @@ _ALL_BONUS_FEATURES = {
 
 _DEFAULT_BONUS_STATES = {key: True for key in _ALL_BONUS_FEATURES}
 
-# Dizionario premi di default (rimane invariato)
 premi_default = {"ambo": 5, "terno": 10, "quaterna": 15, "cinquina": 20, "tombola": 50}
 
-# --------------------------------------------------------------------
-# 4. Import delle funzioni Firebase (invece di JSONBin)
-# --------------------------------------------------------------------
 from firebase_client import (
-    load_group_settings_from_firebase,   # MODIFICA
-    save_group_settings_to_firebase     # MODIFICA
+    load_group_settings_from_firebase,   
+    save_group_settings_to_firebase     
 )
 
-# --------------------------------------------------------------------
-# 5. Funzione per ottenere chat_id e thread_id se applicabile
-# --------------------------------------------------------------------
 def get_chat_id_or_thread(update: Update):
     chat_id = update.effective_chat.id
     thread_id = None
@@ -62,10 +47,6 @@ def get_chat_id_or_thread(update: Update):
     return chat_id, thread_id
 
 
-# ----------------------------
-# Async cached get_chat
-# ----------------------------
-# semplice cache in-memory per evitare chiamate ripetute a get_chat
 _chat_cache = {}
 _chat_cache_lock = asyncio.Lock()
 _chat_cache_ttl = int(os.getenv('CHAT_CACHE_TTL', '300'))
@@ -80,9 +61,7 @@ async def cached_get_chat(bot, chat_id):
             if now - ts < _chat_cache_ttl:
                 return chat_obj
             else:
-                # scaduto
                 _chat_cache.pop(key, None)
-    # fuori dal lock chiamata reale
     try:
         chat = await bot.get_chat(chat_id=chat_id)
         async with _chat_cache_lock:
@@ -92,23 +71,13 @@ async def cached_get_chat(bot, chat_id):
         logger.error(f"cached_get_chat: errore ottenendo chat {chat_id}: {e}")
         raise
 
-# --------------------------------------------------------------------
-# 6. Funzione per ottenere la limitazione degli admin usando Firebase
-# --------------------------------------------------------------------
 def get_admin_limitation(chat_id):
-    """
-    Carica da Firebase le impostazioni del gruppo specificato e
-    restituisce lo stato di 'limita_admin' (default True).
-    Se la voce non esiste, la crea con valori di default.
-    """
-    # MODIFICA: carica le impostazioni INTERE usando Firebase
     settings = load_group_settings_from_firebase(chat_id)
 
     chat_id_str = str(chat_id)
     if chat_id_str not in settings:
-        # Se non esiste, inizializzo con extraction_mode manual e limita_admin True
         settings[chat_id_str] = {'extraction_mode': 'manual', 'limita_admin': True}
-        save_group_settings_to_firebase(chat_id, settings)  # MODIFICA
+        save_group_settings_to_firebase(chat_id, settings) 
         return True
     else:
         stato = settings[chat_id_str].get('limita_admin', True)
@@ -125,9 +94,6 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_member = await context.bot.get_chat_member(chat_id, user_id)
     return chat_member.status in ['administrator', 'creator']
 
-# --------------------------------------------------------------------
-# 8. Comando /find_group (rimasto invariato, non tocca Firebase o JSONBin)
-# --------------------------------------------------------------------
 async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
         await update.message.reply_text(
@@ -192,7 +158,6 @@ async def find_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 def format_chat_permissions(permissions):
-    # Mappa etichetta -> attributo Permissions
     mapping = [
         ("Invio di messaggi", 'can_send_messages'),
         ("Invio di messaggi multimediali", 'can_send_media_messages'),
@@ -213,15 +178,11 @@ def format_chat_permissions(permissions):
 
     message = "🔹 *Chat Permissions:*\n\n"
     for label, attr in mapping:
-        # usa getattr in modo sicuro; se l'attributo non esiste, ottiene None
         value = getattr(permissions, attr, None)
         if value is not None:
             message += f"• *{label}:* {'✅' if value else '❌'}\n"
     return message
 
-# --------------------------------------------------------------------
-# 9. Handler che notifica l’owner quando il bot viene aggiunto a un gruppo (invariato)
-# --------------------------------------------------------------------
 async def on_bot_added(update: Update, context: CallbackContext):
     chat = update.effective_chat
     my_chat_member = update.my_chat_member
@@ -250,7 +211,6 @@ async def on_bot_added(update: Update, context: CallbackContext):
         except Exception as e:
             logger.error(f"Errore nell'invio del messaggio: {e}")
 
-# Supporto sticker per tema: mappa tema -> (numero -> sticker_file_id), più uno sticker finale opzionale
 THEME_STICKERS = {
     "normale": {
         69: "CAACAgQAAxkBAAEty5Vm7TKgxrKxsvhU824Vk7x2CEND3wACegcAAj2RqFBz3KLfy83lqTYE",
@@ -275,11 +235,25 @@ THEME_STICKERS = {
         404: "CAACAgQAAxkBAAFBPXZpdyvZ7sRdSnFNAaujDbicjmi-5wACJx0AAlMHuFOaB05GebevQTgE",
         "final": "CAACAgQAAxkBAAFBPXRpdyvZMx-YAwUz7h7G1LOaRwtnKQACLxgAAkYpuVNu6DW7nmqblzgE"
     },
+    "barbie": {
+        104: "CAACAgQAAxkBAAFH5dJp6jDT9BBEZI3o_Ehq1HZs7I2w_wACExwAAi5gSFMYVq6JEudVWjsE",
+        666: "CAACAgQAAxkBAAFH5dRp6jDTYiOl7vMS3pRWUc8r49aSbQAC7RkAAn4pSFPvbPuqaLtIHjsE",
+        110: "CAACAgQAAxkBAAFH5dNp6jDTJEZ7EG1BITvXSkI0Rg9fpgACLhoAAuBFUVOzFuQWZFKKpjsE",
+        404: "CAACAgQAAxkBAAFH5dVp6jDT6pbRWG02KGnVtaukoyQRDgAC6RoAAroZSVM3SZwdsDzeQDsE",
+        "final": "CAACAgQAAxkBAAFH5dZp6jDTjgZDvaEbxgv4tZ0Zd1HHoQACFCAAAt0fSFOUQalpZnSHCTsE"
+    },
+    "calcio": {
+        104: "CAACAgIAAxkBAAFH5fNp6jHb7Y35wQSo1eE4GsUtAAE1a8EAAgFUAAJIiBhKfAZwVe4F0yg7BA",
+        666: "CAACAgIAAxkBAAFH5fJp6jHb0PgLH1p0xZmQPzvBXAABBw8AAn9GAAIx2vlIucLxm0TUenM7BA",
+        110: "CAACAgIAAxkBAAFH5fFp6jHbvLHs5KGyNoXEvSK-DP74jQACKEcAAjhg-UlDgpPK0uCR6DsE",
+        404: "CAACAgIAAxkBAAFH5fRp6jHbz5A9KJ74R9Z49OsMIBz1wwACQUMAAlGVIEqV-lHkjfHgNDsE",
+        "final": "CAACAgIAAxkBAAFH5fVp6jHblM5xskxKoIL20iwGX1fQRwAC3kkAAoXZIEq-rAZQv3QLzTsE"
+    }
+
 }
 
 def get_sticker_for_number(number, tema: str = 'normale'):
     stickers_for_tema = THEME_STICKERS.get(tema, THEME_STICKERS.get('normale', {}))
-    # Se il tema disabilita gli sticker, restituisci None
     theme_settings = THEME_SETTINGS.get(tema, THEME_SETTINGS.get('normale', {}))
     if not theme_settings.get('stickers_enabled', True):
         return None
@@ -293,7 +267,6 @@ def get_final_sticker(tema: str = 'normale'):
     return stickers_for_tema.get('final')
 
 
-# Impostazioni per tema: abilitazione sticker e feature disponibili per tema
 THEME_SETTINGS = {
     "normale": {
         "stickers_enabled": True
@@ -302,6 +275,12 @@ THEME_SETTINGS = {
         "stickers_enabled": True
     },
     "marvel": {
+        "stickers_enabled": True
+    },
+    "barbie": {
+        "stickers_enabled": True
+    },
+    "calcio": {
         "stickers_enabled": True
     }
 }
@@ -327,11 +306,24 @@ THEME_FEATURES = {
         "666": True,
         "404": True,
         "Tombolino": True
+    },
+    "barbie": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    },
+    "calcio": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
     }
 }
 
 
-# Validazione di THEME_FEATURES: rimuove chiavi non riconosciute e normalizza i valori a bool
 VALID_FEATURE_KEYS = set(_ALL_BONUS_FEATURES.keys())
 
 def _validate_theme_features():
@@ -345,41 +337,29 @@ def _validate_theme_features():
                 logger.warning(f"THEME_FEATURES: rimosso feature non valida '{k}' dal tema '{tema}'")
                 feats.pop(k, None)
             else:
-                # Normalizza a bool
                 feats[k] = bool(feats.get(k, False))
 
-# Esegui validazione al caricamento del modulo
 _validate_theme_features()
 
 def get_default_feature_states(tema: str = 'normale'):
-    """Restituisce un dizionario con lo stato (True/False) delle feature per il tema.
-
-    La funzione ritorna mapping con chiavi stringa per ogni feature nota.
-    """
     defaults = THEME_FEATURES.get(tema)
     if defaults is None:
-        # se tema sconosciuto, usa normale
         defaults = THEME_FEATURES.get('normale', {})
     return dict(defaults)
 
 
-# Mappa tema -> nome file immagine per l'annuncio della partita.
-# I file devono trovarsi nella stessa cartella del progetto (lo stesso folder di questi file .py).
 THEME_ANNOUNCEMENT_PHOTOS = {
     "normale": "normale.png",
     "harry_potter": "harry.png",
     "marvel": "marvel.png",
+    "barbie": "barbie.png",
+    "calcio": "calcio.png"
 }
 
 def get_announcement_photo(tema: str = 'normale'):
-    """Ritorna il percorso assoluto del file immagine per l'annuncio del tema, o None se non esiste.
-
-    Usa i nomi definiti in `THEME_ANNOUNCEMENT_PHOTOS` localizzati nella cartella del progetto.
-    """
     filename = THEME_ANNOUNCEMENT_PHOTOS.get(tema) or THEME_ANNOUNCEMENT_PHOTOS.get('normale')
     if not filename:
         return None
-    # Cartella del progetto (dove risiedono i file .py principali)
     base_dir = os.path.dirname(os.path.abspath(__file__))
     full_path = os.path.join(base_dir, filename)
     if os.path.exists(full_path):
