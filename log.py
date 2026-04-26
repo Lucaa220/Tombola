@@ -9,21 +9,14 @@ import os
 from utils import safe_escape_markdown as esc
 import io
 import matplotlib
-matplotlib.use('Agg') # Importante per evitare errori di thread su server senza GUI
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-# --------------------------------------------------------------------
-# IMPORT PER FIREBASE (Corretto)
-# Usa il client centralizzato per evitare doppie inizializzazioni
-# --------------------------------------------------------------------
 from firebase_client import db
 
-# --------------------------------------------------------------------
-# Costanti e configurazioni
-# --------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -34,12 +27,8 @@ VALID_COMMANDS = {
 
 OWNER_USER_ID = int(os.getenv("OWNER_USER_ID", "0"))
 
-# Executor per operazioni bloccanti (Firebase e Matplotlib)
 _executor = ThreadPoolExecutor(max_workers=3)
 
-# --------------------------------------------------------------------
-# Funzione che registra immediatamente ogni log su Firebase
-# --------------------------------------------------------------------
 async def log_interaction(user_id: int, username: str, chat_id: int, command: str, group_name: str):
     if command not in VALID_COMMANDS:
         return
@@ -53,7 +42,6 @@ async def log_interaction(user_id: int, username: str, chat_id: int, command: st
         'command': command
     }
     
-    # Esegui in background per non rallentare l'utente
     loop = asyncio.get_running_loop()
     try:
         await loop.run_in_executor(_executor, _sync_save_log, chat_id, entry)
@@ -69,11 +57,7 @@ def _sync_save_log(chat_id, entry):
     except Exception as e:
         logger.error(f"Errore scrittura Firebase: {e}")
 
-# --------------------------------------------------------------------
-# HELPERS SINCRONI (Da eseguire in executor)
-# --------------------------------------------------------------------
 def _fetch_all_logs_sync() -> List[Dict]:
-    """Scarica tutti i log (pesante, usare con cautela)."""
     try:
         all_logs_dict = db.reference("logs").get() or {}
         flattened = []
@@ -97,16 +81,12 @@ def _fetch_logs_group_sync(group_id: int) -> List[Dict]:
 
 def _get_all_group_ids_sync() -> List[int]:
     try:
-        # shallow=True scarica solo le chiavi, molto più veloce
         data = db.reference("logs").get(shallow=True) or {}
         return [int(k) for k in data.keys() if str(k).lstrip('-').isdigit()]
     except Exception as e:
         logger.error(f"Errore recupero ID gruppi: {e}")
         return []
 
-# --------------------------------------------------------------------
-# 1. SEND LOGS BY GROUP
-# --------------------------------------------------------------------
 async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_USER_ID:
@@ -123,11 +103,9 @@ async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     loop = asyncio.get_running_loop()
 
-    # Logica pesante spostata in thread separato
     def _process_logs():
         now_local = datetime.now().astimezone()
         if specific_date:
-            # Usiamo il timezone locale approssimativo
             start_dt = datetime.combine(specific_date, _time.min).astimezone()
             end_dt = start_dt + timedelta(days=1)
         else:
@@ -141,7 +119,6 @@ async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE)
         by_group = {}
         
         for gid in group_ids:
-            # Recuperiamo i log del gruppo
             raw_logs = _fetch_logs_group_sync(gid)
             filtered = []
             for log in raw_logs:
@@ -151,7 +128,6 @@ async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     filtered.append(log)
             
             if filtered:
-                # Ordina per timestamp
                 filtered.sort(key=lambda x: x.get('timestamp', ''))
                 by_group[gid] = filtered
         
@@ -198,19 +174,9 @@ async def send_logs_by_group(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if cumulative_message:
         await update.message.reply_text("".join(cumulative_message), parse_mode=ParseMode.MARKDOWN_V2, disable_web_page_preview=True)
 
-# --------------------------------------------------------------------
-# 2. SEND ALL LOGS
-# --------------------------------------------------------------------
 async def send_all_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Simile a sopra, ma senza raggruppamento visuale
-    # Per brevità, usa la stessa logica di invio messaggi.
-    # L'implementazione attuale nel tuo file è OK se resa asincrona come sopra.
-    # Qui riporto una versione semplificata che richiama logicamente quella sopra.
     await send_logs_by_group(update, context)
 
-# --------------------------------------------------------------------
-# 3. LOG STATS (Grafico)
-# --------------------------------------------------------------------
 async def logstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_USER_ID: return
@@ -223,7 +189,6 @@ async def logstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         all_logs = _fetch_all_logs_sync()
         
-        # Filtro
         active_logs = []
         for l in all_logs:
             try:
@@ -235,7 +200,7 @@ async def logstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not active_logs:
             return None, "Nessun log attivo nelle ultime 24 ore."
 
-        # Conti
+        
         groups = set()
         cmds = {'/trombola': 0, '/estrai': 0, 'error': 0}
         hourly = {}
@@ -250,7 +215,6 @@ async def logstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             h = t.replace(minute=0, second=0, microsecond=0)
             hourly[h] = hourly.get(h, 0) + 1
 
-        # Grafico
         dates = sorted(hourly.keys())
         counts = [hourly[d] for d in dates]
 
@@ -282,9 +246,6 @@ async def logstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(caption)
 
-# --------------------------------------------------------------------
-# 4. LOG ACTIVITY (Grafico settimanale)
-# --------------------------------------------------------------------
 async def logactivity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_USER_ID: return
@@ -296,8 +257,6 @@ async def logactivity(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start = now - timedelta(days=7)
         all_logs = _fetch_all_logs_sync()
         
-        # Logica euristica per "partite" (/trombola seguito da /estrai)
-        # Raggruppa per chat
         chat_logs = {}
         for l in all_logs:
             try:
@@ -316,17 +275,15 @@ async def logactivity(update: Update, context: ContextTypes.DEFAULT_TYPE):
             i = 0
             while i < len(entries):
                 if entries[i][1] == '/trombola':
-                    # Cerca estrazione successiva
                     for j in range(i+1, len(entries)):
                         if entries[j][1] == '/estrai':
                             games_count += 1
                             wd = entries[j][0].weekday()
                             weekday_dist[wd] += 1
-                            i = j # Salta avanti
+                            i = j 
                             break
                 i += 1
         
-        # Plot
         days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
         fig, ax = plt.subplots()
         ax.bar(days, weekday_dist, color='orange')
@@ -343,9 +300,6 @@ async def logactivity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_photo(chat_id=user_id, photo=bio, caption=f"_🔙 Totale partite stimate\\: {count} negli utilimi 7 giorni_", parse_mode=ParseMode.MARKDOWN_V2)
 
 
-# --------------------------------------------------------------------
-# 5. LOG CLEAN (Ottimizzato)
-# --------------------------------------------------------------------
 async def logclean(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_USER_ID: return
@@ -367,10 +321,7 @@ async def logclean(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cutoff = datetime.now().astimezone() - timedelta(days=days)
         deleted_count = 0
         
-        # Ottieni riferimento radice
         logs_ref = db.reference("logs")
-        # Scarica tutto (purtroppo necessario senza query complesse su firebase admin)
-        # Se il DB è enorme, questo andrebbe fatto a chunk o via Cloud Functions.
         all_groups = logs_ref.get() or {}
 
         updates = {}
@@ -383,17 +334,12 @@ async def logclean(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if ts_str:
                         ts = datetime.fromisoformat(ts_str).astimezone()
                         if ts < cutoff:
-                            # Aggiungi a path di cancellazione
                             updates[f"{gid}/{push_id}"] = None
                             deleted_count += 1
                 except:
-                    # Se timestamp rotto, cancella o ignora? Ignoriamo per sicurezza
                     pass
 
-        # Esegui multi-path update (molto più veloce di N richieste)
-        # Firebase accetta update atomici
         if updates:
-            # Firebase limita la dimensione degli update. Facciamo chunk da 500.
             chunk_size = 500
             items = list(updates.items())
             for i in range(0, len(items), chunk_size):
@@ -409,13 +355,9 @@ async def logclean(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Errore logclean: {e}")
         await update.message.reply_text(f"❌ Errore durante la pulizia: {e}")
 
-# --------------------------------------------------------------------
-# Helper Link (Cache Sincrona/Asincrona mista)
-# --------------------------------------------------------------------
 _group_link_cache = {}
 
 async def _make_group_link(bot, chat_id: int) -> str:
-    # check cache
     if chat_id in _group_link_cache:
         return _group_link_cache[chat_id]
     
