@@ -773,7 +773,7 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "errore_invio_cartella":"Non riesco a inviarti la formazione ⚽",
             "non_in_partita":"⛔️ Non sei in partita!",
             
-            "numero_estratto_annuncio":"_📣 È stato giocato il numero **{current_number_val:02}** ⚽_",
+            "numero_estratto_annuncio":"_📣 È sceso in campo il numero **{current_number_val:02}** ⚽_",
 
             "stop_solo_admin": "🚫 Solo l'arbitro può fermare il match",
             "messaggio_stop": "*🛑 Partita interrotta dall'arbitro*",
