@@ -4,14 +4,12 @@ import telegram
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from game_instance import get_game
-# MODIFICA: import delle funzioni Firebase al posto di JSONBin
 from firebase_client import (
-    load_classifica_from_firebase,    # in luogo di load_classifica_from_json
-    save_classifica_to_firebase,      # in luogo di save_classifica_to_json
+    load_classifica_from_firebase,    
+    save_classifica_to_firebase,      
     add_log_entry
 )
 from variabili import get_chat_id_or_thread, is_admin, get_default_feature_states
-# MODIFICA: rimuovere load_group_settings e sostituire con Firebase
 from firebase_client import load_group_settings_from_firebase
 from variabili import get_sticker_for_number, get_final_sticker, premi_default, get_announcement_photo
 import asyncio
@@ -23,6 +21,7 @@ from firebase_admin import db
 from utils import safe_escape_markdown as esc
 from asyncio.log import logger
 from messages import get_testo_tematizzato
+from iconic_players import trigger_iconic_sticker_event
 
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -70,8 +69,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per annuncio
-    # Prepare caption from template and attempt to send theme-specific announcement photo
+    tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
     caption = get_testo_tematizzato('annuncio_partita', tema)
     photo_path = get_announcement_photo(tema)
     if photo_path and os.path.exists(photo_path):
@@ -90,7 +88,6 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
         except Exception as e:
-            # Fallback to plain message if photo send fails
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=caption,
@@ -109,7 +106,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    chat_id, _ = get_chat_id_or_thread(update)  # Aggiunto per tema, assumendo contesto gruppo se possibile
+    chat_id, _ = get_chat_id_or_thread(update)  
     group_settings = load_group_settings_from_firebase(chat_id)
     tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
 
@@ -124,7 +121,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             try:
                 member_status = await context.bot.get_chat_member(group_id, user_id)
-                # MODIFICA QUI: Aggiunto 'restricted' per permettere l'ingresso a utenti con limitazioni
                 if member_status.status not in ['member', 'administrator', 'creator', 'restricted']:
                     text = get_testo_tematizzato('join_non_autorizzato', tema)
                     await update.message.reply_text(text)
@@ -171,7 +167,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         game.usernames[user_id] = update.effective_user.full_name
 
-                    # Se il tema è Harry Potter, assegna casualmente una casata e memorizzala
                     assigned_house = None
                     if tema == 'harry_potter':
                         if not getattr(game, 'user_houses', None):
@@ -181,7 +176,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             houses = ['Grifondoro', 'Serpeverde', 'Corvonero', 'Tassorosso']
                             assigned_house = random.choice(houses)
                             game.user_houses[user_id] = assigned_house
-                            # Persistiamo la casata assegnata nelle impostazioni del gruppo
                             try:
                                 conf = load_group_settings_from_firebase(group_id) or {}
                                 conf_user_houses = conf.get('user_houses', {})
@@ -195,12 +189,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     cartella = game.players[user_id]
                     formatted_cartella = game.format_cartella(cartella)
                     escaped_cartella = esc(formatted_cartella)
-                    # Invia la cartella in privato usando la funzione centralizzata (gestisce fallback)
                     await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
 
                     if tema == 'harry_potter':
                         if user_id not in getattr(game, 'announced_smistamento_users', set()):
-                            # preferiamo @username se disponibile
                             if update.effective_user.username:
                                 mention = f"@{update.effective_user.username}"
                             else:
@@ -215,7 +207,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     message_thread_id=game.thread_id if game.thread_id else None
                                 )
                             except Exception:
-                                # fallback al template se il formato diretto dovesse fallire
                                 escaped_username = esc(update.effective_user.username or update.effective_user.full_name)
                                 text_annuncio = get_testo_tematizzato('annuncio_smistamento', tema, escaped_username=escaped_username, house=house_disp)
                                 await context.bot.send_message(chat_id=group_id, text=text_annuncio, parse_mode=ParseMode.MARKDOWN_V2, message_thread_id=game.thread_id if game.thread_id else None)
@@ -284,7 +275,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             member_status = await context.bot.get_chat_member(group_chat_id, user_id)
-            # MODIFICA QUI: Aggiunto 'restricted' per permettere l'ingresso a utenti con limitazioni
             if member_status.status not in ['member', 'administrator', 'creator', 'restricted']:
                 text = get_testo_tematizzato('non_membro_gruppo', tema)
                 await query.answer(text, show_alert=True)
@@ -311,7 +301,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         cartella = game.players[user_id]
         formatted_cartella = game.format_cartella(cartella)
-        # Se il tema è Harry Potter, assegna una casata se necessario
         assigned_house = None
         if tema == 'harry_potter':
             if not getattr(game, 'user_houses', None):
@@ -321,7 +310,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 houses = ['🦁 Grifondoro', '🐍 Serpeverde', '🦅 Corvonero', '🦡 Tassorosso']
                 assigned_house = random.choice(houses)
                 game.user_houses[user_id] = assigned_house
-                # Persist the assigned house into Firebase group settings
                 try:
                     conf = load_group_settings_from_firebase(group_chat_id) or {}
                     conf_user_houses = conf.get('user_houses', {})
@@ -332,10 +320,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
 
-            # Usa la funzione centralizzata per inviare la cartella in DM (gestisce fallback)
             await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
 
-            # Invia UNICO annuncio nel gruppo
             if tema == 'harry_potter':
                 if update.effective_user.username:
                     user = esc(update.effective_user.username)
@@ -344,7 +330,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     mention = esc(update.effective_user.full_name)
                 house_disp = assigned_house or "Casata Sconosciuta"
                 group_msg = f"*_🎩 {mention} è salito sulla sua Nimbus 2000 per la casa {house_disp}\\!_*"
-                # Only announce smistamento once per user
                 if user_id not in getattr(game, 'announced_smistamento_users', set()):
                     try:
                         await context.bot.send_message(chat_id=group_chat_id, text=group_msg, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
@@ -354,15 +339,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.send_message(chat_id=group_chat_id, text=text_annuncio, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
                     game.announced_smistamento_users.add(user_id)
         elif tema == 'marvel':
-            # Inizializza il dizionario se non esiste
             if not getattr(game, 'user_houses', None):
                 game.user_houses = {}
             
             assigned_house = game.user_houses.get(user_id)
             
-            # Se l'utente non ha ancora un team, assegnane uno
             if not assigned_house:
-                # Lista dei Team Marvel
                 marvel_teams = [ "Iron Man 🦾", "Captain America 🛡️", "Thor 🔨", "Hulk 💪", "Black Widow 🕷️", "Hawkeye 🏹", "Vision 🤖",
                                 "Scarlet Witch 🔮", "Falcon 🦅", "Winter Soldier 🥷", "Ant-Man 🐜", "Wasp 🐝", "Captain Marvel ✨", "War Machine 🛡️",
                                 "Spider-Man 🕸️", "Miles Morales 🕷️", "Spider-Gwen 🕸️", "Black Panther 🐆", "Doctor Strange 🪄", "Wong 🧙", "Shang-Chi 🥋",
@@ -381,7 +363,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 game.user_houses[user_id] = assigned_house
                 
-                # Salvataggio su Firebase
                 try:
                     conf = load_group_settings_from_firebase(group_chat_id) or {}
                     conf_user_houses = conf.get('user_houses', {})
@@ -392,10 +373,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
 
-            # Invia la cartella in DM
             await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
 
-            # Annuncio nel gruppo
             if tema == 'marvel':
                 if update.effective_user.username:
                     user = esc(update.effective_user.username)
@@ -405,26 +384,119 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 team_disp = assigned_house or "Team Sconosciuto"
                 
-                # Messaggio tematizzato Marvel
                 group_msg = f"*_🧬 {mention} è stato reclutato da Nick Fury nel team di {team_disp}\\!_*"
                 
-                # Controlla se l'annuncio è già stato fatto per questo utente
                 if user_id not in getattr(game, 'announced_smistamento_users', set()):
                     try:
                         await context.bot.send_message(chat_id=group_chat_id, text=group_msg, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
                     except Exception:
-                        # Fallback in caso di errore (uso generico o template)
                         pass
                     
-                    # Aggiunge l'utente al set degli annunciati
                     game.announced_smistamento_users.add(user_id)
+        elif tema == 'calcio':
+            if not getattr(game, 'user_teams', None):
+                game.user_teams = {}
+
+            assigned_team = game.user_teams.get(user_id)
+
+            if not assigned_team:
+                serie_abc = [
+
+                    # 🔝 SERIE A
+                    "Atalanta 🔵⚫", "Bologna 🔴🔵", "Cagliari 🔴🔵", "Como 🔵",
+                    "Cremonese 🔴⚪", "Fiorentina 🟣", "Genoa 🔴🔵", "Inter 🔵⚫",
+                    "Juventus ⚪⚫", "Lazio 🔵⚪", "Lecce 🔴🟡", "Milan 🔴⚫",
+                    "Napoli 🔵", "Parma 🟡🔵", "Pisa 🔵", "Roma 🟡🔴",
+                    "Sassuolo 🟢⚫", "Torino 🟤", "Udinese ⚫⚪", "Verona 🟡🔵",
+
+                    # ⚽ SERIE B
+                    "Avellino 🟢", "Bari 🔴", "Carrarese 🔵", "Catanzaro 🟡🔴",
+                    "Cesena ⚫⚪", "Empoli 🔵", "Frosinone 🟡🔵", "Juve Stabia 🟡🔵",
+                    "Mantova 🔴", "Modena 🟡🔵", "Monza 🔴", "Padova 🔴⚪",
+                    "Palermo 🩷🖤", "Pescara 🔵⚪", "Reggiana 🔴",
+                    "Sampdoria 🔵⚪🔴", "Spezia ⚫⚪", "Sudtirol 🔴⚪",
+                    "Venezia 🟢🟠", "Virtus Entella 🔵",
+
+                    # 🟢 SERIE C - Girone A
+                    "Albinoleffe 🔵", "Alcione Milano 🟠", "Arzignano 🟡🔵",
+                    "Cittadella 🟤", "Dolomiti Bellunesi 🟢",
+                    "Giana Erminio 🔵", "Inter U23 🔵⚫",
+                    "Lecco 🔵", "Lumezzane 🔴", "Novara 🔵",
+                    "Ospitaletto ⚪", "Pergolettese 🟡🔵",
+                    "Pro Patria 🔵", "Pro Vercelli ⚪",
+                    "Renate ⚫🔵", "Trento 🟡🔵",
+                    "Triestina 🔴", "Union Brescia 🔵",
+                    "Vicenza ⚪🔴", "Virtus Verona 🔵",
+
+                    # 🟢 SERIE C - Girone B
+                    "Carpi 🔴", "Arezzo 🔴", "Ascoli ⚫⚪",
+                    "Bra 🟡🔴", "Campobasso 🔴🔵", "Forlì 🔴",
+                    "Gubbio 🔴🔵", "Guidonia 🟡🔵",
+                    "Juventus NG ⚪⚫", "Livorno 🔴",
+                    "Perugia 🔴", "Pianese ⚪⚫",
+                    "Pineto 🔵", "Pontedera 🟠",
+                    "Ravenna 🔴🟡", "Rimini 🔴⚪",
+                    "Sambenedettese 🔴🔵", "Ternana 🟢🔴",
+                    "Torres 🔴🔵", "Vis Pesaro 🔴",
+
+                    # 🟢 SERIE C - Girone C
+                    "Atalanta U23 🔵⚫", "Audace Cerignola 🟡🔵",
+                    "Benevento 🟡🔴", "Casarano 🔵",
+                    "Casertana 🔴", "Catania 🔴🔵",
+                    "Cavese 🔵", "Cosenza 🔴🔵",
+                    "Crotone 🔴🔵", "Foggia 🔴⚫",
+                    "Giugliano 🟡🔵", "Latina 🔵",
+                    "Monopoli 🟢", "Picerno 🔴",
+                    "Potenza 🔴🔵", "Salernitana 🔴",
+                    "Siracusa 🔵", "Sorrento 🔴",
+                    "Team Altamura 🔵", "Trapani 🔴"
+                ]
+                assigned_team = random.choice(serie_abc)
+                game.user_teams[user_id] = assigned_team
+
+                try:
+                    conf = load_group_settings_from_firebase(group_chat_id) or {}
+                    conf_user_teams = conf.get('user_teams', {})
+                    conf_user_teams[str(user_id)] = assigned_team
+                    conf['user_teams'] = conf_user_teams
+
+                    from firebase_client import save_group_settings_to_firebase
+                    save_group_settings_to_firebase(group_chat_id, conf)
+                except Exception:
+                    pass
+
+            await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_team)
+
+            if update.effective_user.username:
+                user = esc(update.effective_user.username)
+                mention = f"@{user}"
+            else:
+                mention = esc(update.effective_user.full_name)
+
+            team_disp = assigned_team or "Squadra Sconosciuta"
+
+            group_msg = f"*_⚽ {mention} è sceso in campo per {team_disp}\\!_*"
+
+            if user_id not in getattr(game, 'announced_team_users', set()):
+                try:
+                    await context.bot.send_message(
+                        chat_id=group_chat_id,
+                        text=group_msg,
+                        message_thread_id=thread_id,
+                        parse_mode=ParseMode.MARKDOWN_V2
+                    )
+                except Exception:
+                    pass
+
+                if not hasattr(game, 'announced_team_users'):
+                    game.announced_team_users = set()
+                game.announced_team_users.add(user_id)
         else:
             if update.effective_user.username:
                 user = esc(update.effective_user.username)
                 escape_username = f"@{user}"
             else:
                 escape_username = esc(update.effective_user.full_name)
-            # Only announce normal join once per user
             if user_id not in getattr(game, 'announced_join_users', set()):
                 await context.bot.send_message(
                     chat_id=group_chat_id,
@@ -441,17 +513,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == 'draw_number':
         await estrai(update, context)
-        await query.answer(get_testo_tematizzato('numero_estratto', tema, default="Numero estratto!")) # Aggiunto default per retrocompatibilità
-        return
+        await query.answer(get_testo_tematizzato('numero_estratto', tema, default="Numero estratto!")) 
 
     elif query.data == 'stop_game':
         await stop_game(update, context)
-        # Potresti voler usare un messaggio tematizzato anche qui
-        await query.answer(get_testo_tematizzato('partita_interrotta', tema, default="Partita interrotta!")) # Aggiunto default per retrocompatibilità
-        return
+        await query.answer(get_testo_tematizzato('partita_interrotta', tema, default="Partita interrotta!")) 
 
     elif query.data == 'mostra_cartella':
-        await show_cartella(user_id, game, query, tema) # Passo il tema a show_cartella
+        await show_cartella(user_id, game, query, tema) 
         return
 
     else:
@@ -465,7 +534,7 @@ async def get_group_link(context, group_chat_id):
     except Exception:
         return None
 
-async def send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=None): # Aggiunto parametro tema e assigned_house
+async def send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=None): 
     cartella = game.players[user_id]
     formatted_cartella = game.format_cartella(cartella)
     escaped_cartella = esc(formatted_cartella)
@@ -504,16 +573,13 @@ async def send_cartella_to_user(user_id, game, group_text, context, tema, assign
         except Exception as e:
             logger.error(f"Errore nel fallback invio cartella al gruppo {game.chat_id}: {e}")
 
-async def show_cartella(user_id, game, query, tema): # Aggiunto parametro tema
-    """Mostra la cartella del giocatore."""
+async def show_cartella(user_id, game, query, tema): 
     if user_id not in game.players:
         await query.answer(get_testo_tematizzato('non_in_partita', tema), show_alert=True)
     else:
         cartella = game.players[user_id]
         formatted_cartella = game.format_cartella(cartella)
-        # Usa un nuovo messaggio tematizzato per la cartella nell'alert
         alert_text = get_testo_tematizzato('mostra_cartella_alert', tema, formatted_cartella=formatted_cartella)
-        # Tronca se necessario
         if len(alert_text) > 200:
             alert_text = alert_text[:197] + "..."
         await query.answer(text=alert_text, show_alert=True)
@@ -525,7 +591,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_name = update.message.chat.title or "il gruppo"
     await log_interaction(user_id, username, chat_id, "/estrai", group_name)
 
-    # Recupero tema per messaggi interni alla funzione estrai
     group_settings = load_group_settings_from_firebase(chat_id)
     tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
 
@@ -556,12 +621,9 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not game.extraction_started:
         game.start_extraction()
 
-    # Recupero settings per modalità estrazione e bonus/malus
     group_settings = load_group_settings_from_firebase(chat_id).get(str(chat_id), {})
-    # parti: default tema-based, poi override con le impostazioni di gruppo
     theme_defaults = get_default_feature_states(tema)
     group_overrides = group_settings.get("bonus_malus_settings", {})
-    # union di chiavi
     all_keys = set(theme_defaults.keys()) | set(group_overrides.keys())
     feature_states = {k: group_overrides.get(k, theme_defaults.get(k, False)) for k in all_keys}
     mode = group_settings.get('extraction_mode', 'manual')
@@ -587,7 +649,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cart_text = current_game_instance.format_cartella(current_game_instance.players[user_id])
             escaped_cart_text = esc(cart_text)
             try:
-                # Usa messaggio tematizzato per la DM quando si ha il numero
                 text_avuto_numero = get_testo_tematizzato('numero_avuto_dm', tema, number_drawn=number_drawn, escaped_cart_text=escaped_cart_text)
                 await bot_context.bot.send_message(
                     chat_id=user_id,
@@ -600,7 +661,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await current_game_instance.check_winner(user_id, name, bot_context) # Passo tema anche a check_winner se necessario
 
     async def update_all_players_dm_and_check_minor_wins(current_game_instance, number_drawn, bot_context):
-        # Filtra solo i giocatori che hanno effettivamente il numero
         players_to_notify = []
         for uid in current_game_instance.players_in_game:
             players_to_notify.append(uid)
@@ -608,7 +668,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not players_to_notify:
             return
 
-        # Elabora a blocchi di 10 utenti per volta
         chunk_size = 25
         for i in range(0, len(players_to_notify), chunk_size):
             chunk = players_to_notify[i:i + chunk_size]
@@ -617,7 +676,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for uid in chunk
             ]
             
-            # Esegui il blocco e gestisci errori
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             for res_idx, err_or_res in enumerate(results):
@@ -625,7 +683,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     uid_err = chunk[res_idx]
                     logger.error(f"Errore DM per {uid_err}: {err_or_res}")
 
-            # Pausa anti-flood tra i blocchi (solo se ce ne sono altri)
             if i + chunk_size < len(players_to_notify):
                 await asyncio.sleep(0.5)
 
@@ -665,7 +722,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await end_game(effective_update_for_end, context)
                 break
 
-            # Invia messaggio dell'estrazione
             try:
                 text_numero_estratto = get_testo_tematizzato('numero_estratto_annuncio', tema, current_number_val=current_number_val)
                 msg = await context.bot.send_message(
@@ -689,7 +745,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"[extract_loop] Errore nell'invio messaggio numero {current_number_val}: {e}")
 
-            # Gestione Bonus/Malus
             if current_number_val in [110, 666, 104, 404]:
                 if feature_states.get(str(current_number_val), True):
                     player_id_affected = random.choice(list(game.players_in_game))
@@ -739,8 +794,20 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         except Exception as e:
                             logger.error(f"[extract_loop] Errore invio sticker bonus/malus {current_number_val} a chat {game.chat_id}: {e}")
 
-            # Invio sticker speciali per 69 e 90 (saltare se tema == 'harry_potter')
-            if current_number_val in [69, 90] and tema not in ['harry_potter', 'marvel']:
+            # Evento speciale sticker calcio per il tema "calcio"
+            if tema == "calcio":
+                try:
+                    await trigger_iconic_sticker_event(
+                        chat_id=game.chat_id,
+                        thread_id=game.thread_id,
+                        number_drawn=current_number_val,
+                        tema=tema,
+                        context=context
+                    )
+                except Exception as e:
+                    logger.error(f"[extract_loop] Errore nell'evento sticker calcio per numero {current_number_val}: {e}")
+
+            if current_number_val in [69, 90] and tema not in ['harry_potter', 'marvel', 'barbie', 'calcio']:
                 sticker_special = get_sticker_for_number(current_number_val, tema)
                 if sticker_special:
                     try:
@@ -753,7 +820,6 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         logger.error(f"[extract_loop] Errore sticker {current_number_val} (post-annuncio) per chat {game.chat_id}: {e}")
 
-            # Aggiorna cartelle e controlla vincitori minori
             if game.players_in_game:
                 try:
                     await update_all_players_dm_and_check_minor_wins(game, current_number_val, context)
@@ -806,14 +872,12 @@ async def auto_extraction_loop(update, context, game, chat_id, thread_id, extrac
 async def end_game(update, context):
     chat_id, thread_id = get_chat_id_or_thread(update)
     game = get_game(chat_id)
-    # Se ci sono punteggi nella partita corrente, proviamo ad aggiornare la classifica overall.
     try:
         if game.current_game_scores:
             game.update_overall_scores()
     except Exception as e:
         logger.error(f"Errore aggiornando la classifica overall al termine partita in chat {chat_id}: {e}")
 
-    # Aggiungiamo una voce di log che indica la conclusione della partita
     try:
         entry = {
             'timestamp': datetime.now().astimezone().isoformat(),
@@ -823,15 +887,12 @@ async def end_game(update, context):
         try:
             add_log_entry(chat_id, entry)
         except Exception:
-            # fallback diretto su DB se add_log_entry non riesce
             ref = db.reference(f"logs/{chat_id}")
             new_ref = ref.push()
             new_ref.set(entry)
     except Exception:
         pass
 
-    # Invia la classifica overall anche se la partita è stata interrotta;
-    # manteniamo il messaggio di interruzione se il gioco è stato segnato come interrotto.
     try:
         await send_final_rankings(update, context)
     except Exception as e:
@@ -839,7 +900,7 @@ async def end_game(update, context):
 
     if game.game_interrupted:
         group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio interruzione
+        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -849,7 +910,6 @@ async def end_game(update, context):
         except Exception as e:
             logger.error(f"Errore inviando messaggio interruzione in chat {chat_id}: {e}")
 
-    # Eliminazione messaggi numeri se impostato
     group_settings = load_group_settings_from_firebase(chat_id).get(str(chat_id), {})
     delete_flag = group_settings.get('delete_numbers_on_end', False)
     if delete_flag:
@@ -874,7 +934,7 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
     classifica_gruppo = load_classifica_from_firebase(chat_id)
     if not classifica_gruppo:
         group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio classifica vuota
+        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
         await context.bot.send_message(
             chat_id=chat_id,
             text=get_testo_tematizzato('nessuna_classifica', tema),
@@ -899,7 +959,7 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if not lines:
         group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio classifica vuota (anche se i punti sono 0)
+        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
         await context.bot.send_message(
             chat_id=chat_id,
             text=get_testo_tematizzato('nessuna_classifica', tema),
@@ -921,7 +981,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await is_admin(update, context):
         group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio admin
+        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
         await update.message.reply_text(get_testo_tematizzato('stop_solo_admin', tema))
         return
 
@@ -930,7 +990,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game.stop_game(interrupted=True)
 
     group_settings = load_group_settings_from_firebase(chat_id)
-    tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio interruzione
+    tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
     await context.bot.send_message(
         chat_id=chat_id,
         text=get_testo_tematizzato('messaggio_stop', tema),
@@ -948,13 +1008,13 @@ async def reset_classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await is_admin(update, context):
         group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio admin
+        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
         await update.message.reply_text(get_testo_tematizzato('reset_classifica_solo_admin', tema))
         return
 
     save_classifica_to_firebase(chat_id, {})
     group_settings = load_group_settings_from_firebase(chat_id)
-    tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') # Recupero tema per messaggio reset
+    tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
     await update.message.reply_text(
         get_testo_tematizzato('messaggio_reset_classifica', tema),
         parse_mode=ParseMode.MARKDOWN_V2
@@ -970,7 +1030,6 @@ async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conf = raw_conf.get(str(chat_origin), {})
     custom_premi = conf.get("premi", premi_default)
 
-    # Recupero tema per i messaggi di regole
     tema = conf.get('tema', 'normale')
 
     keyboard = [
@@ -997,7 +1056,6 @@ async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Se il comando è stato eseguito in un gruppo (chat_origin != user_id), invia nel gruppo
     try:
         chat_id_origin, thread_id = get_chat_id_or_thread(update)
     except Exception:
@@ -1014,7 +1072,6 @@ async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_thread_id=thread_id
             )
         except Exception:
-            # Primo fallback: invia il testo con escape sicuro (dovrebbe risolvere problemi MarkdownV2)
             try:
                 await context.bot.send_message(
                     chat_id=chat_id_origin,
@@ -1023,7 +1080,6 @@ async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_thread_id=thread_id
                 )
             except Exception:
-                # Secondo fallback: prova a rispondere nella chat originale (se disponibile)
                 try:
                     if update.message:
                         await update.message.reply_text(
@@ -1031,7 +1087,6 @@ async def regole(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             parse_mode=ParseMode.MARKDOWN_V2
                         )
                 except Exception:
-                    # Ultimo fallback: invia senza parse_mode come testo semplice
                     try:
                         await context.bot.send_message(
                             chat_id=chat_id_origin,
@@ -1051,11 +1106,10 @@ async def rule_section_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     data = query.data.split('|')
-    action = data[0].split('_', 1)[1]  # es. "comandi", "unirsi", etc.
+    action = data[0].split('_', 1)[1]  
     chat_origin = data[1] if len(data) > 1 else None
     user_id = query.from_user.id
 
-    # Determina l'ID del gruppo di origine: preferiamo il valore passato nel callback (chat_origin)
     try:
         chat_id = int(chat_origin) if chat_origin is not None else getattr(query.message.chat, 'id', None)
     except Exception:
@@ -1065,7 +1119,6 @@ async def rule_section_callback(update: Update, context: ContextTypes.DEFAULT_TY
     tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
 
     if action == 'back':
-        # Torna al menu principale: usiamo lo stesso testo e la stessa tastiera di `regole()`
         text_to_send = get_testo_tematizzato('regole_introduzione', tema)
 
         keyboard = [
@@ -1099,9 +1152,8 @@ async def rule_section_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.delete()
         return
 
-    section_key = action  # es. "comandi", "unirsi", etc.
+    section_key = action  
 
-    # Sezione speciale: punteggi -> inseriamo i valori dei premi dal gruppo
     if section_key == 'punteggi':
         group_title = None
         group_link = None
@@ -1142,16 +1194,14 @@ async def rule_section_callback(update: Update, context: ContextTypes.DEFAULT_TY
             premi_tombola=premi_dict.get('tombola', 50),
             premi_tombolino=val_tombolino
         )
-        # Pulsanti di ritorno/chiudi anche per la sezione punteggi
         back_button = [
             [InlineKeyboardButton("🔙 Indietro", callback_data=f"rule_back|{chat_origin}"), InlineKeyboardButton("❌ Chiudi", callback_data=f"rule_close|{chat_origin}")]
         ]
     else:
-        # Usa messaggio tematizzato generico se esiste, altrimenti quello specifico
         text_to_send = get_testo_tematizzato(f'regole_{section_key}', tema, default=_RULES_SECTIONS.get(section_key, "Testo non trovato."))
 
         back_button = [
-            [InlineKeyboardButton("🔙 Indietro", callback_data=f"rule_back|{chat_origin}"), InlineKeyboardButton("❌ Chiudi",       callback_data=f"rule_close|{chat_origin}")]
+            [InlineKeyboardButton("🔙 Indietro", callback_data=f"rule_back|{chat_origin}"), InlineKeyboardButton("❌ Chiudi", callback_data=f"rule_close|{chat_origin}")]
         ]
     reply_markup = InlineKeyboardMarkup(back_button)
 
