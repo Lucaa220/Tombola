@@ -2,7 +2,7 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
-from variabili import chat_id_global, thread_id_global, premi_default  # MODIFICA: manterremo load_group_settings solo se usato altrove
+from variabili import chat_id_global, thread_id_global, premi_default  
 import logging
 import json
 import os
@@ -10,9 +10,9 @@ from telegram.constants import ParseMode
 import telegram
 from telegram.helpers import escape_markdown
 from firebase_client import (
-    load_classifica_from_firebase,    # in luogo di load_classifica_from_json
-    save_classifica_to_firebase,      # in luogo di save_classifica_to_json
-    load_group_settings_from_firebase # in luogo di load_group_settings (JSONBin)
+    load_classifica_from_firebase,    
+    save_classifica_to_firebase,      
+    load_group_settings_from_firebase 
 )
 from messages import get_testo_tematizzato
 
@@ -21,12 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def update_player_score(group_id: int, user_id: int, points: int) -> None:
-    """
-    Carica la classifica corrente da Firebase, aggiorna i punti del giocatore e
-    salva nuovamente su Firebase.
-    """
     classifica = load_classifica_from_firebase(group_id)
-    # Chiavi utente come stringa, incrementa i punti
     classifica[str(user_id)] = classifica.get(str(user_id), 0) + points
     save_classifica_to_firebase(group_id, classifica)
 
@@ -37,15 +32,13 @@ class TombolaGame:
         self.numeri_estratti = []
         self.numeri_tombola = list(range(1, 91)) + [110, 666, 104, 404]
         random.shuffle(self.numeri_tombola)
-        # Un solo vincitore per ciascun premio
         self.winners = {'ambo': None, 'terno': None, 'quaterna': None, 'cinquina': None}
-        self.tombola_winner = None  # Primo vincitore tombola
+        self.tombola_winner = None 
         self.game_active = True
         self.current_game_scores = {}
         self.overall_scores = {}
         self.usernames = {}
         self.user_houses = {}
-        # Track which users have already had their join/sorting announced in the group
         self.announced_join_users = set()
         self.announced_smistamento_users = set()
         self.players_in_game = set()
@@ -59,27 +52,22 @@ class TombolaGame:
         self.number_message_ids = []
         self.join_lock = asyncio.Lock()
         self.draw_lock = asyncio.Lock()
-        # cache per le impostazioni di gruppo (popolato da set_chat_id)
         self.group_settings_cache = None
         self.group_settings_ts = 0
-        self._group_settings_ttl = 30  # secondi
+        self._group_settings_ttl = 30 
 
 
 
     def set_chat_id(self, chat_id):
         self.chat_id = chat_id
-        # Carica e cachea le impostazioni del gruppo al settaggio della chat
         try:
             conf = load_group_settings_from_firebase(chat_id) or {}
-            # load_group_settings_from_firebase returns a dict keyed by chat_id (string) in our client
             self.group_settings_cache = conf.get(str(chat_id), conf) if isinstance(conf, dict) else {}
             self.group_settings_ts = asyncio.get_event_loop().time()
-            # Aggiorna punteggi personalizzati se presenti
             custom_scores = self.group_settings_cache.get('premi')
             if custom_scores:
                 self.custom_scores = custom_scores
         except Exception:
-            # Fallisce silenziosamente e lascia i valori di default
             self.group_settings_cache = {}
 
     def set_thread_id(self, thread_id):
@@ -92,7 +80,6 @@ class TombolaGame:
             if user_id in self.players_in_game:
                 return False
 
-            # Crea la cartella impostando 15 numeri casuali
             if user_id not in self.players:
                 numeri_cartella = random.sample(range(1, 91), 15)
                 self.current_game_scores[user_id] = 0
@@ -115,12 +102,10 @@ class TombolaGame:
             logger.warning(f"Tentativo di estrarre numero ma gioco non attivo in chat {self.chat_id}")
             return None
         async with self.draw_lock:
-            # Protegge la selezione e la modifica della lista dei numeri
             if not self.game_active:
                 logger.warning(f"Tentativo di estrarre numero ma gioco non attivo (inside lock) in chat {self.chat_id}")
                 return None
 
-            # Ottieni impostazioni di gruppo dalla cache se valida, altrimenti ricarica
             now = asyncio.get_event_loop().time()
             if self.group_settings_cache and (now - self.group_settings_ts) < self._group_settings_ttl:
                 group_conf = self.group_settings_cache
@@ -135,7 +120,6 @@ class TombolaGame:
             from variabili import _DEFAULT_BONUS_STATES
             feature_states = _DEFAULT_BONUS_STATES.copy()
             
-            # Sovrascrivi con le impostazioni del gruppo se presenti
             saved_settings = group_conf.get("bonus_malus_settings", {})
             if saved_settings:
                 feature_states.update(saved_settings)
@@ -171,7 +155,6 @@ class TombolaGame:
                     self.game_active = False
                 return None
 
-            # Applica numero estratto: aggiorna cartelle e controlla vincitori
             self.numeri_estratti.append(selected_number)
 
             for uid in list(self.players_in_game):
@@ -214,9 +197,8 @@ class TombolaGame:
                 raw_username = self.usernames.get(vincitore, f"Utente_{vincitore}")
                 escaped = escape_markdown(raw_username, version=2)
 
-                premio_lower = premio  # oppure premio.lower()
+                premio_lower = premio  
 
-                # Recupero tema per personalizzare l'annuncio
                 group_settings = load_group_settings_from_firebase(self.chat_id)
                 tema = group_settings.get(str(self.chat_id), {}).get('tema', 'normale')
                 chiave_annuncio = f'vincitore_{premio_lower}'
@@ -237,18 +219,15 @@ class TombolaGame:
         tombolino_active = group_conf.get("bonus_malus_settings", {}).get("Tombolino", False)
         tombola_points = self.custom_scores.get("tombola", premi_default["tombola"])
         
-        # Recupero tema
         theme_conf = load_group_settings_from_firebase(self.chat_id)
         tema = theme_conf.get(str(self.chat_id), {}).get('tema', 'normale')
 
-        # Lista per accumulare i vincitori simultanei di questo turno
         round_winners = []
 
         for user_id, cartella in self.players.items():
             if user_id not in self.players_in_game:
                 continue
             
-            # Se ha già vinto la tombola principale, saltalo (a meno che non gestiamo plurivincite diverse)
             if self.tombola_winner is not None and user_id == self.tombola_winner:
                 continue
 
@@ -261,24 +240,22 @@ class TombolaGame:
 
         game_over = False
         
-        # Gestione vincitori trovati
         for winner_id in round_winners:
             raw_username = self.usernames.get(winner_id, f"Utente_{winner_id}")
             escaped_username = escape_markdown(raw_username, version=2)
 
-            # CASO 1: Prima Tombola in assoluto
             if self.tombola_winner is None:
-                self.tombola_winner = winner_id # Il primo della lista diventa il "titolare"
+                self.tombola_winner = winner_id 
                 self.tombole_fatte += 1
                 
                 if tombolino_active:
                     points_awarded = tombola_points
                     extra = ", la partita prosegue per il tombolino"
-                    game_over = False # Si continua per il tombolino
+                    game_over = False 
                 else:
                     points_awarded = tombola_points
                     extra = " e la partita è terminata\\."
-                    game_over = True # Finisce qui
+                    game_over = True 
 
                 announcement_text = get_testo_tematizzato('tombola_prima', tema, escaped_username=escaped_username, extra=extra)
                 self.add_score(winner_id, points_awarded)
@@ -290,13 +267,11 @@ class TombolaGame:
                     message_thread_id=self.thread_id
                 )
 
-            # CASO 2: Tombolino (o seconda tombola se simultanea alla prima ma gestita dopo nel loop)
             else:
                 self.tombole_fatte += 1
                 points_awarded = tombola_points // 2
                 announcement_text = get_testo_tematizzato('tombolino', tema, escaped_username=escaped_username)
                 
-                # Se siamo qui, il gioco deve finire (o perché è tombolino, o perché tombolino era disattivo e questo è un ex-aequo)
                 game_over = True 
 
                 self.add_score(winner_id, points_awarded)
@@ -389,17 +364,12 @@ class TombolaGame:
             self.stop_game(interrupted=True)
 
     def update_overall_scores(self):
-        """
-        Aggiorna la classifica complessiva in Firebase sommando i punteggi
-        della partita corrente. Poi ricarica la classifica overall da Firebase.
-        """
         if self.game_interrupted or not self.chat_id:
             return
 
         for user_id, punti in self.current_game_scores.items():
             update_player_score(self.chat_id, user_id, punti)
 
-        # Ricarica la classifica overall da Firebase
         self.overall_scores = load_classifica_from_firebase(self.chat_id)
         self.current_game_scores.clear()
 
@@ -494,7 +464,6 @@ class TombolaGame:
         except Exception as e:
             logger.error(f"Errore generico nell'annunciare {prize_type_str} per {escaped_username} in chat {self.chat_id}: {e}")
 
-# Gestione istanze di gioco per chat
 games = {}
 
 
