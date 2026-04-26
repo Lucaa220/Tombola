@@ -2,8 +2,6 @@ from asyncio.log import logger
 from collections import defaultdict
 from telegram.helpers import escape_markdown
 
-# Mappa dei nomi di bonus/malus per tema
-# Chiave: nome del tema -> mappatura dei placeholder usati nei template
 THEME_BONUS_NAMES = {
     "normale": {
         "bonus_110_name": "Bonus 110",
@@ -25,9 +23,22 @@ THEME_BONUS_NAMES = {
         "bonus_104_name": "Martello di Thor",
         "malus_404_name": "Multiverso",
         "tombolino_name": "Tombolino Marvel",
+    },
+    "barbie": {
+        "bonus_110_name": "Barbie Icon Moment",
+        "malus_666_name": "Fashion Disaster",
+        "bonus_104_name": "Glow Up Glam",
+        "malus_404_name": "Closet Chaos",
+        "tombolino_name": "Barbie Rising Star",
+    },
+    "calcio": {
+        "bonus_110_name": "Gol spettacolare",
+        "malus_666_name": "Autogol clamoroso",
+        "bonus_104_name": "Parata miracolosa",
+        "malus_404_name": "Fuorigioco ingenuo",
+        "tombolino_name": "Secondo classificato"
     }
 }
-
 
 def get_feature_name(feature_key: str, tema: str = 'normale') -> str:
     mapping = {
@@ -557,12 +568,361 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "vincitore_cinquina": "_🏆 @{escaped} ha conquistato le gemme del Potere, dello Spazio, della Realtà, dell'Anima e del Tempo e ha fatto cinquina\\!_",
             "tombola_prima": "_🏆 @{escaped_username}  conquista tutte le gemme dell'Infinito e con il potere del Guanto ha fatto Tombola{extra}_",
             "tombolino": "_🏆 @{escaped_username} riesce a scappare in tempo e non viene polverizzato dallo schiocco di Thanos e fa Tombolino\\!_",
-        }
+        },
+        "barbie":{
+            "solo_admin": "🚫 Solo le Barbie Admin possono avviare la festa 💅✨",
+            "annuncio_partita":(
+                        "*💖✨ Party Tombola Barbie iniziato\\!*\n\n"
+                        "_💅 Premi 'Unisciti' per entrare nella Dreamhouse, ma prima assicurati di aver avviato il bot_\n\n"
+                        "_🎀 Barbie Moderatrice, quando sei pronta avvia con /estrai 💖 oppure usa /stop per fermare tutto\\. "
+                        "Che vinca la Barbie più fortunata\\! Per dubbi usa /regolo 💕_"
+                        ),
+            "join_non_autorizzato": "🚫 Non sei nella lista VIP della Dreamhouse 💖",
+            "non_membro_gruppo": "🚫 Non fai parte del Barbie Club 💅",
+            "partita_non_attiva": "🚫 Nessun party Barbie in corso al momento 💕",
+            "partita_iniziata": "🚫 Il party è già iniziato 💖 aspetta il prossimo!",
+            "unito_partita": "*💖 Sei ufficialmente nella Dreamhouse {group_text}\\! Ecco la tua cartella Barbie ✨\\:*\n\n{escaped_cartella}",
+            "non_unito_ora": "🔜 Troppo tardi per entrare nel party Barbie 💅",
+            "benvenuto": (
+                        "*💖 Benvenuta [{escaped_nickname}](https://t.me/{escaped_username}) nella Dreamhouse\\!*\n\n"
+                        "Questo è il bot ufficiale Barbie Tombola ✨, aggiungilo nel tuo gruppo e gioca con le tue amiche 💕\\.\n\n"
+                        "Usa /impostami per personalizzare tutto 💅 e /trombola per iniziare il party\\!\n\n"
+                        "_💖 Stay fabulous 💅_"
+                        ),
+            
+            "gia_unito":"Sei già dentro il party Barbie 💖\\!",
+            "annuncio_unione":"*_💅 {username} è entrata nella Dreamhouse\\!_*",
+            "numero_estratto":"💖 Numero glamour estratto!",
+            "partita_interrotta":"💔 Party Barbie interrotto!",
+            "errore_invio_cartella":"Non riesco a mandarti la cartella Barbie in privato 💌",
+            "non_in_partita":"⛔️ Non sei nella Dreamhouse!",
+            "numero_estratto_annuncio":"_💖 È stato estratto il numero glamour **{current_number_val:02}**_",
+            "stop_solo_admin": "🚫 Solo Barbie Admin possono fermare il party 💅",
+            "messaggio_stop": "*💔 Il party Barbie è stato interrotto*",
+            "messaggio_cartella": "*💖 Sei nella Dreamhouse {group_text}\\! Ecco la tua cartella ✨\\:*\n\n{escaped_cartella}",
+            "mostra_cartella_alert":"💖 La tua cartella glamour:\n\n{formatted_cartella}",
+            "estrazione_solo_admin":"🚫 Solo Barbie Admin possono estrarre 💅",
+            "nessuna_partita_attiva_per_estrazione":"🚫 Nessun party attivo 💖",
+            "numero_avuto_dm":"*💌 Avevi il numero {number_drawn:02}\\!*\n\n{escaped_cart_text}",
+            "tutti_numeri_estratti":"✨ Tutti i numeri glamour sono usciti! Party finito 💖",
+            
+            "bonus_110": "*👑 {bonus_110_name}\\!*\n\n_💖 @{user_affected_escaped_name} entra nella Dreamhouse con un outfit da passerella\\. Tutti si fermano a guardare\\.\\.\\. è pura energia da Barbie Icon\\! I riflettori si accendono e il suo glow up le regala {punti_val} punti\\._",
+            "malus_666": "*💔 {malus_666_name}\\!*\n\n_😱 @{user_affected_escaped_name} prova un cambio outfit all'ultimo secondo\\.\\.\\. ma qualcosa va storto\\! Tacchi rotti, trucco sbavato, drama totale nella Dreamhouse\\. Perde {punti_val} punti\\._",
+            "bonus_104": "*✨ {bonus_104_name}\\!*\n\n_💅 @{user_affected_escaped_name} trova lo specchio magico della Dreamhouse\\. Un tocco di gloss, un sorriso\\.\\.\\. ed è subito Barbie perfetta\\! L'energia glamour le dona {punti_val} punti\\._",
+            "malus_404": "*🌀 {malus_404_name}\\!*\n\n_🤯 @{user_affected_escaped_name} apre l'armadio infinito della Dreamhouse\\.\\.\\. ma si perde tra troppi outfit\\! Quando finalmente esce, il party è già andato avanti\\. Perde {punti_val} punti\\._",
+            
+            "partita_interrotta_no_punti":"💔 Nessun punto assegnato, party interrotto",
+            "nessuna_classifica":"*📊 Nessuna classifica glamour disponibile 💖*",
+            "classifica_finale":"🏆 Classifica Barbie Finale\\:\n\n" + "{lines}",
+            
+            "reset_classifica_solo_admin":"🚫 Solo Barbie Admin possono resettare 💅",
+            "messaggio_reset_classifica":"_✨ Tutti i punteggi sono stati cancellati 💖_",
+            
+            "tombola_prima": "_👑 @{escaped_username} raggiunge l'apice della Dreamhouse\\: BARBIE ICON MOMENT 💖✨{extra}_",
+            "tombolino": "_🌟 @{escaped_username} brilla sotto i riflettori\\: Barbie Rising Star 💖\\!_",   
+
+            "errore_invio_regole_privato": (
+                        "_💌 @{escaped_username} non riesco a mandarti le regole Barbie in privato 💔\n"
+                        "*Vai su @Tombola2_Bot e premi 'Avvia'*" 
+                    ),
+            "messaggio_invio_regole_privato":"_💖 @{escaped_username} ti ho inviato le regole Barbie 💌_",
+
+            "impostazioni_solo_admin": "🚫 Solo Barbie Admin possono modificare 💅",
+            "pannello_controllo": "*💖 Pannello Dreamhouse*\n\n_✨ Scegli cosa personalizzare_",
+
+            "nessuna_partita_attiva_per_giocatori":"🚫 Nessun party Barbie attivo 💔",
+            "nessun_giocatore_unito":"*🤷‍♀️ Nessuna Barbie si è unita ancora\\!*",
+            "numero_giocatori_attivi":"*💖 Barbie in gioco\\: {count}*",
+
+            "vincitore_ambo": "_💅 @{escaped} crea il suo primo look perfetto: Barbie Duo Glam ✨\\!_",
+            "vincitore_terno": "_👠 @{escaped} conquista la passerella con un Barbie Trio Iconic 💖\\!_",
+            "vincitore_quaterna": "_👯‍♀️ @{escaped} raduna la squadra perfetta: Barbie Squad Goals ✨\\!_",
+            "vincitore_cinquina": "_💕 @{escaped} domina il party con il suo Barbie Dream Team 🌈\\!_",
+            "regole_introduzione":(
+                "*_💖 REGOLE DELLA DREAMHOUSE\\:_*\n\n"
+                "_👋 Benvenuta nella guida ufficiale Barbie\\! Qui potrai esplorare tutte le sezioni del party ✨_\n\n"
+                "_💅 Per qualsiasi dubbio scrivici su @AssistenzaTombola2\\_Bot\\._\n"
+                "_Siamo sempre pronte ad aiutarti, bestie 💕_\n\n"
+            ),
+
+            "regole_punteggi":(
+                "*👑 Glam Points\\:*\n\n"
+                "_💖 Qui si decide chi è la vera Barbie Icon\\! Questi sono i punteggi attuali nel gruppo {header}\\:_\n\n"
+                "1️⃣ *Barbie Duo Glam* vale {premi_ambo} punti\n"
+                "2️⃣ *Barbie Trio Iconic* vale {premi_terno} punti\n"
+                "3️⃣ *Barbie Squad Goals* vale {premi_quaterna} punti\n"
+                "4️⃣ *Barbie Dream Team* vale {premi_cinquina} punti\n"
+                "5️⃣ *Barbie Icon Moment* vale {premi_tombola} punti\n\n"
+                "_✨ Extra glamour\\:_\n\n"
+                "6️⃣ *Barbie Rising Star* vale {premi_tombolino} punti\n"
+            ),
+
+            "regole_comandi": (
+                "*💖 Comandi Dreamhouse\\:*\n\n"
+                "_💅 Tutti i controlli per gestire il party Barbie\\:_\n\n"
+                "*1️⃣ /trombola*\n"
+                "_Avvia il party 💕 \\(solo Barbie Admin\\)_\n"
+                "*2️⃣ /impostami*\n"
+                "_Personalizza la Dreamhouse ✨_\n"
+                "*3️⃣ /classifiga*\n"
+                "_Mostra chi è la Barbie più icon 💖_\n"
+                "*4️⃣ /azzera*\n"
+                "_Resetta tutto (drama totale 💔)_\n"
+                "*5️⃣ /stop*\n"
+                "_Ferma il party 💅_\n"
+                "*6️⃣ /estrai*\n"
+                "_Fai partire il glow up dei numeri ✨_\n"
+                "*7️⃣ /trombolatori*\n"
+                "_Scopri quante Barbie sono nel party 💖_"
+            ),
+
+            "regole_unirsi": (
+                "*💅 Come entrare nel party\\:*\n\n"
+                "_💖 Quando una Barbie Admin apre il party, premi 'Unisciti' e riceverai la tua cartella glamour✨_\n\n"
+                "_Ora non ti resta che brillare e sperare nel tuo momento icon 👑_"
+            ),
+
+            "regole_estrazione": (
+                "*✨ Glow Numbers\\:*\n\n"
+                "_💖 I numeri escono automaticamente e vengono segnati nella tua cartella_\n"
+                "_💅 Tu rilassati e goditi il party, la magia la fa il bot_"
+            ),
+
+            "regole_bonus_malus": (
+                "*💖 Drama & Glow\\:*\n\n"
+                "_✨ Vuoi un party movimentato\\? Attiva bonus e malus\\!_\n\n"
+                "_💅 Ogni evento può regalarti o toglierti punti a sorpresa_\n\n"
+                "*1️⃣ {bonus_104_name}*\n"
+                "_Glow up immediato ✨_\n\n"
+                "*2️⃣ {malus_666_name}*\n"
+                "_Drama totale 💔_\n\n"
+                "*3️⃣ {bonus_110_name}*\n"
+                "_Momento ICON 👑_\n\n"
+                "*4️⃣ {malus_404_name}*\n"
+                "_Outfit sbagliato 😱_\n\n"
+                "*5️⃣ Barbie Rising Star*\n"
+                "_La seconda star del party 🌟_"
+            ),
+
+            "impostazioni_solo_admin": "🚫 Solo Barbie Admin possono modificare 💅",
+
+            "pannello_controllo": "*💖 Dreamhouse Control Panel*\n\n_✨ Scegli cosa personalizzare_",
+            "descrizione_estrazione": (
+                "_💖 Vuoi un party automatico o preferisci controllare tutto tu come una vera Barbie Boss? "
+                "Scegli se far uscire i numeri automaticamente oppure manualmente 💅:_"
+            ),
+
+            "errore_aggiornamento_menu": "💔 Oops\\! Qualcosa è andato storto nella Dreamhouse\\. Riprova 💖",
+
+            "descrizione_admin": (
+                "_👑 Vuoi mantenere il controllo totale della Dreamhouse? "
+                "Premi 'Sì' per lasciare tutto alle Barbie Admin oppure 'No' per un party libero e selvaggio 💅:_"
+            ),
+
+            "descrizione_premi": (
+                "_✨ Qui si decide chi sarà la vera Barbie Icon\\! "
+                "Imposta i punti e lascia che il drama faccia il resto 💖:_"
+            ),
+
+            "descrizione_bonus_malus": (
+                "_💅 Vuoi aggiungere un po’ di drama al party? "
+                "Attiva bonus e malus per rendere tutto più spicy 🌶️💖_"
+            ),
+
+            "descrizione_elimina_numeri": (
+                "_🧹 Vuoi mantenere la Dreamhouse sempre perfetta? "
+                "Attiva la pulizia automatica dei messaggi a fine party ✨_"
+            ),
+
+            "descrizione_tema": (
+                "_💖 Scegli lo stile della tua Dreamhouse\\! "
+                "Ogni tema cambia completamente l’atmosfera del party 💅✨_"
+            )
+        },
+        "calcio": {
+            "solo_admin": "🚫 Solo l'arbitro può dare il via alla partita ⚽",
+            
+            "annuncio_partita":(
+                        "*⚽🔥 Partita di Trombola iniziata\\!*\n\n"
+                        "_🏟️ Premi 'Unisciti' per scendere in campo, ma prima assicurati di aver avviato il bot_\n\n"
+                        "_📣 Arbitro, quando sei pronto fischia l’inizio con /estrai oppure interrompi con /stop\\. "
+                        "Che vinca il migliore\\! Per dubbi usa /regolo ⚽_"
+                        ),
+
+            "join_non_autorizzato": "🚫 Non sei convocato per questa partita ⚽",
+            "non_membro_gruppo": "🚫 Non fai parte della squadra",
+            "partita_non_attiva": "🚫 Nessuna partita in corso allo stadio",
+            "partita_iniziata": "🚫 La partita è già iniziata! Aspetta il prossimo match ⚽",
+            
+            "unito_partita": "*🏟️ Sei ufficialmente in campo nel gruppo {group_text} per {house}\\! Ecco la tua formazione\\:*\n\n{escaped_cartella}",
+            
+            "non_unito_ora": "🔜 Il match è iniziato, niente cambi ora ⚽",
+            
+            "benvenuto": (
+                        "*⚽ Benvenuto [{escaped_nickname}](https://t.me/{escaped_username}) nello stadio\\!*\n\n"
+                        "Questo è il bot ufficiale Trombola ⚽, gioca con i tuoi amici e domina il campionato\\!\n\n"
+                        "Usa /impostami per gestire la squadra e /trombola per iniziare la partita\\. "
+                        "Che vinca il migliore\\! 🏆\n\n"
+                        "_🔥 Fischio d'inizio\\!_"
+                        ),
+
+            "gia_unito":"Sei già in campo ⚽!",
+            "numero_estratto":"⚽ Azione in corso!",
+            "partita_interrotta":"🛑 Partita sospesa!",
+            
+            "errore_invio_cartella":"Non riesco a inviarti la formazione ⚽",
+            "non_in_partita":"⛔️ Non sei in partita!",
+            
+            "numero_estratto_annuncio":"_📣 È stato giocato il numero **{current_number_val:02}** ⚽_",
+
+            "stop_solo_admin": "🚫 Solo l'arbitro può fermare il match",
+            "messaggio_stop": "*🛑 Partita interrotta dall'arbitro*",
+
+            "messaggio_cartella": "*🏟️ Sei in campo nel gruppo {group_text} per {house}\\! Ecco la tua formazione\\:*\n\n{escaped_cartella}",
+            "mostra_cartella_alert":"⚽ La tua formazione:\n\n{formatted_cartella}",
+
+            "estrazione_solo_admin":"🚫 Solo l'arbitro può estrarre i numeri",
+            "nessuna_partita_attiva_per_estrazione":"🚫 Nessuna partita avviata",
+
+            "numero_avuto_dm":"*🎯 Hai preso il numero {number_drawn:02}\\!*\n\n{escaped_cart_text}",
+
+            "tutti_numeri_estratti":"⚽ Tutte le azioni sono state giocate! Fine partita!",
+
+            "bonus_110": "*🏆 {bonus_110_name}\\!*\n\n_⚽ @{user_affected_escaped_name} parte in contropiede, dribbla tutta la difesa e segna sotto l'incrocio\\! Gol spettacolare\\! Guadagna {punti_val} punti\\._",
+            "malus_666": "*💥 {malus_666_name}\\!*\n\n_😱 @{user_affected_escaped_name} sbaglia il controllo\\.\\.\\. la palla gli sfugge e finisce in rete\\. Autogol clamoroso\\! Perde {punti_val} punti\\._",
+            "bonus_104": "*🧤 {bonus_104_name}\\!*\n\n_🧱 @{user_affected_escaped_name} si lancia in tuffo e para un rigore impossibile\\! Il pubblico esplode\\. Guadagna {punti_val} punti\\._",
+            "malus_404": "*🌀 {malus_404_name}\\!*\n\n_😵‍💫 @{user_affected_escaped_name} perde completamente la posizione\\.\\.\\. si ritrova fuori gioco senza accorgersene\\! Azione sprecata\\! Perde {punti_val} punti\\._",
+
+            "partita_interrotta_no_punti":"🌫️ Match sospeso: risultato non valido",
+
+            "nessuna_classifica":"*📊 Nessuna classifica disponibile*",
+            "classifica_finale":"🏆 Classifica finale\\:\n\n" + "{lines}",
+
+            "reset_classifica_solo_admin":"🚫 Solo l'arbitro può resettare la classifica",
+            "messaggio_reset_classifica":"_🧹 Classifica azzerata\\!_",
+
+            "vincitore_ambo": "_⚽ @{escaped} segna il primo gol\\: Doppietta in arrivo\\!_",
+            "vincitore_terno": "_🔥 @{escaped} è scatenato\\: Tripletta\\!_",
+            "vincitore_quaterna": "_💥 @{escaped} domina il campo\\: Poker di gol\\!_",
+            "vincitore_cinquina": "_👑 @{escaped} è leggenda\\: Manita\\!_",
+
+            "tombola_prima": "_🏆 @{escaped_username} vince il campionato\\! GOL DECISIVO ⚽🔥{extra}_",
+            "tombolino": "_🥈 @{escaped_username} sfiora la vittoria\\: Secondo posto\\!_",
+
+            "nessuna_partita_attiva_per_giocatori":"🚫 Nessuna partita in corso",
+            "nessun_giocatore_unito":"*🤷‍♂️ Nessun giocatore in campo\\!*",
+            "numero_giocatori_attivi":"*👥 Giocatori in campo\\: {count}*",
+            "regole_introduzione":(
+                "*_⚽ REGOLAMENTO DEL GIUOCO CALCIO\\:_*\n\n"
+                "_👋 Benvenuto nello stadio\\! Qui trovi tutte le regole del match_\n\n"
+                "_📣 Per assistenza contatta @AssistenzaTombola2\\_Bot\\._\n"
+                "_Il VAR è sempre attivo 😏_\n\n"
+            ),
+
+            "errore_invio_regole_privato": (
+                "_📭 @{escaped_username} non riesco a inviarti il regolamento_\n"
+                "*Vai su @Tombola2_Bot e premi 'Avvia'*"
+            ),
+
+            "messaggio_invio_regole_privato":"_📬 @{escaped_username} ti ho inviato il regolamento ⚽_",
+
+            "regole_punteggi":(
+                "*🏆 Classifica Campionato\\:*\n\n"
+                "_⚽ Questi sono i punteggi nel gruppo {header}\\:_\n\n"
+                "1️⃣ *Doppietta* vale {premi_ambo} punti\n"
+                "2️⃣ *Tripletta* vale {premi_terno} punti\n"
+                "3️⃣ *Poker* vale {premi_quaterna} punti\n"
+                "4️⃣ *Manita* vale {premi_cinquina} punti\n"
+                "5️⃣ *Vittoria del Campionato* vale {premi_tombola} punti\n\n"
+                "_🥈 Extra\\:_\n\n"
+                "6️⃣ *Secondo posto* vale {premi_tombolino} punti\n"
+            ),
+
+            "regole_comandi": (
+                "*⚽ Comandi di gioco\\:*\n\n"
+                "*1️⃣ /trombola*\n"
+                "_Fischio d’inizio_\n"
+                "*2️⃣ /impostami*\n"
+                "_Configura la squadra_\n"
+                "*3️⃣ /classifiga*\n"
+                "_Mostra la classifica_\n"
+                "*4️⃣ /azzera*\n"
+                "_Reset campionato_\n"
+                "*5️⃣ /stop*\n"
+                "_Fine partita_\n"
+                "*6️⃣ /estrai*\n"
+                "_Gioca le azioni_\n"
+                "*7️⃣ /trombolatori*\n"
+                "_Giocatori in campo_"
+            ),
+
+            "regole_unirsi": (
+                "*👕 Scendere in campo\\:*\n\n"
+                "_⚽ Premi 'Unisciti' quando inizia la partita_\n\n"
+                "_Riceverai la tua formazione e potrai giocare subito_"
+            ),
+
+            "regole_estrazione": (
+                "*🎯 Azioni di gioco\\:*\n\n"
+                "_⚽ I numeri rappresentano le azioni di gioco_\n"
+                "_Il bot segna tutto automaticamente_"
+            ),
+
+            "regole_bonus_malus": (
+                "*🔥 Eventi di gioco\\:*\n\n"
+                "_⚽ Durante la partita possono succedere colpi di scena\\!_\n\n"
+                "*1️⃣ {bonus_104_name}*\n"
+                "_Parata incredibile 🧤_\n\n"
+                "*2️⃣ {malus_666_name}*\n"
+                "_Autogol 💥_\n\n"
+                "*3️⃣ {bonus_110_name}*\n"
+                "_Gol spettacolare 🔥_\n\n"
+                "*4️⃣ {malus_404_name}*\n"
+                "_Fuorigioco 😵‍💫_\n\n"
+                "*5️⃣ Secondo posto*\n"
+                "_Secondo posto 🥈_"
+            ),
+
+            "impostazioni_solo_admin": "🚫 Solo l'arbitro può modificare le impostazioni",
+
+            "pannello_controllo": "*⚽ Sala VAR*\n\n_📊 Configura il match_",
+            "errore_aggiornamento_menu": "⚠️ Errore VAR\\. Riprova l'azione\\!",
+
+            "descrizione_estrazione": (
+                "_⚽ Vuoi un gioco veloce o controllato\\? "
+                "Puoi scegliere se far partire le azioni automaticamente oppure gestirle manualmente come un vero allenatore\\:_"
+            ),
+
+            "descrizione_admin": (
+                "_👨‍⚖️ Vuoi lasciare il controllo solo all’arbitro o a tutta la squadra\\? "
+                "Decidi chi può gestire la partita\\:_"
+            ),
+
+            "descrizione_premi": (
+                "_🏆 Imposta il valore dei gol\\! "
+                "Decidi quanti punti assegnare per ogni azione decisiva\\:_"
+            ),
+
+            "descrizione_bonus_malus": (
+                "_🔥 Vuoi rendere la partita imprevedibile\\? "
+                "Attiva bonus e malus per colpi di scena degni di una finale\\:_"
+            ),
+
+            "descrizione_elimina_numeri": (
+                "_🧹 Vuoi tenere lo stadio pulito\\? "
+                "Attiva la rimozione automatica delle azioni a fine partita\\:_"
+            ),
+
+            "descrizione_tema": (
+                "_🎽 Scegli lo stile della tua squadra\\! "
+                "Ogni tema cambia il modo in cui vivi la partita\\:_"
+            )
+        },
+        
     }
     templates_for_tema = testi.get(tema, testi["normale"])
     template = templates_for_tema.get(chiave)
 
-    # Se non esiste la chiave, ma viene passato un default, usalo come template da formattare
     if template is None:
         default_value = kwargs.pop('default', None)
         if default_value is not None:
@@ -570,8 +930,6 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
         else:
             template = "Testo non trovato"
 
-    # Popola automaticamente i placeholder dei nomi dei bonus/malus in base al tema,
-    # ma lascia priorità agli kwargs espliciti passati dal chiamante.
     theme_names = THEME_BONUS_NAMES.get(tema, THEME_BONUS_NAMES.get('normale', {}))
     for k, v in theme_names.items():
         try:
@@ -583,11 +941,10 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
     try:
         return template.format(**kwargs)
     except KeyError as e:
-        # Riproviamo formattando con valori di fallback vuoti per i placeholder mancanti
         missing_key = e.args[0] if e.args else 'unknown'
         try:
             safe_kwargs = defaultdict(str, kwargs)
             return template.format_map(safe_kwargs)
         except Exception:
             logger.warning(f"Mancante placeholder in template per chiave '{chiave}': {missing_key}")
-            return template  # Fallback
+            return template 
