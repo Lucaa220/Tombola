@@ -4,10 +4,6 @@ import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
 import argparse
-import nest_asyncio
-
-nest_asyncio.apply()
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -254,8 +250,10 @@ async def show_tema_menu(query, chat_id_str, settings, tema):
         [
             InlineKeyboardButton(f"Normale {'✅' if current_tema == 'normale' else ''}", callback_data='set_tema_normale'),
             InlineKeyboardButton(f"Harry Potter {'✅' if current_tema == 'harry_potter' else ''}", callback_data='set_tema_harry_potter')],
-            [InlineKeyboardButton(f"Marvel {'✅' if current_tema == 'marvel' else ''}", callback_data='set_tema_marvel')
+            [InlineKeyboardButton(f"Marvel {'✅' if current_tema == 'marvel' else ''}", callback_data='set_tema_marvel'), 
+            InlineKeyboardButton(f"Barbie {'✅' if current_tema == 'barbie' else ''}", callback_data='set_tema_barbie')
         ],
+        [InlineKeyboardButton(f"Calcio {'✅' if current_tema == 'calcio' else ''}", callback_data='set_tema_calcio')],
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -321,6 +319,17 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_group_settings_to_firebase(chat_id_obj, settings)
         await show_tema_menu(query, chat_id_str, settings, tema)
         return
+    if action == 'set_tema_barbie':
+        settings[chat_id_str]['tema'] = 'barbie'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
+    if action == 'set_tema_calcio':
+        settings[chat_id_str]['tema'] = 'calcio'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
+
     
     if action == 'set_manual':
         settings[chat_id_str]['extraction_mode'] = 'manual'
@@ -441,7 +450,6 @@ async def numero_giocatori(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, _ = get_chat_id_or_thread(update)
     game = get_game(chat_id)
     
-    # Recupero tema per messaggi interni
     group_settings = load_group_settings_from_firebase(chat_id)
     tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
 
@@ -463,7 +471,6 @@ async def numero_giocatori(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id, thread_id = get_chat_id_or_thread(update)
 
-    # Recupero tema per messaggi interni
     group_settings = load_group_settings_from_firebase(chat_id)
     tema = group_settings.get(str(chat_id), {}).get('tema', 'normale')
 
@@ -499,7 +506,6 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             nome = f"utente_{user_id_str}"
 
-        # Escapiamo in modo sicuro l'intera riga per evitare problemi con ParseMode
         raw_line = f"{idx}. @{nome}: {punti} punti"
         lines.append(esc(raw_line))
 
@@ -511,7 +517,6 @@ async def classifica(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def combined_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # Removed await query.answer() to allow specific handlers to manage it
 
     action = query.data
     user = query.from_user
