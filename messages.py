@@ -96,6 +96,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "partita_interrotta_no_punti":"⚠️ Punti non conteggiati perché la partita è stata interrotta.",
             "nessuna_classifica":"*📊 Nessuna classifica disponibile\\.*",
             "classifica_finale":"🏆 Classifica finale:\n\n" + "{lines}",
+            "classifica_solo_admin": "🚫 Solo gli amministratori possono vedere la classifica.",
+            "nessuna_classifica_disponibile": "*📊 Nessuna classifica disponibile\\.*",
+            "testo_classifica": "🏆 Classifica finale:\n\n" + "{lines}",
             "reset_classifica_solo_admin":"🚫 Solo gli amministratori possono resettare la classifica.",
             "messaggio_reset_classifica":"_🚾 Complimenti hai scartato tutti i punteggi\\._",
             "tombola_prima": "_🏆 @{escaped_username} ha fatto tombola{extra}_",
@@ -279,6 +282,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "partita_interrotta_no_punti": "⚡ *Nessun punto assegnato* Il match è stato interrotto dal Preside\\!",
             "nessuna_classifica": "*🏆 La Coppa delle Case è ancora chiusa nella bacheca\\!*",
             "classifica_finale": "*🏆 Classifica Coppa delle Case\\:*\n\n{lines}",
+            "classifica_solo_admin": "🚫 Solo i Capitani possono consultare la Coppa delle Case.",
+            "nessuna_classifica_disponibile": "*🏆 La Coppa delle Case è ancora chiusa nella bacheca\\!*",
+            "testo_classifica": "*🏆 Classifica Coppa delle Case\\:*\n\n{lines}",
             "reset_classifica_solo_admin": "🚫 Solo il Preside può cancellare i punti con la Pergamena dei Ricordi Dimenticati.",
             "messaggio_reset_classifica": "_✨ Con un colpo di bacchetta, tutti i punti tornano a zero\\!_",
             # Sezione Regolamento
@@ -452,6 +458,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "malus_404": "*🌀 {malus_404_name}\\!*\n\n_😵‍💫 Un incantesimo sbagliato apre una frattura nella realtà\\! @{user_affected_escaped_name} viene risucchiato in una timeline alternativa dove non ha mai giocato a Tombola\\. Prima di riuscire a tornare nel presente, perde {punti_val} punti\\._",            "partita_interrotta_no_punti": "🌫️ Punti svaniti nel Regno Quantico.",
             "nessuna_classifica": "*💾 Nessun dato negli archivi Stark\\.*",
             "classifica_finale": "🏆 Hall of Armor \\(Classifica\\)\\:\n\n" + "{lines}",
+            "classifica_solo_admin": "🛡️ Solo il Consiglio può accedere agli archivi Stark.",
+            "nessuna_classifica_disponibile": "*💾 Nessun dato negli archivi Stark\\.*",
+            "testo_classifica": "🏆 Hall of Armor \\(Classifica\\)\\:\n\n" + "{lines}",
             "reset_classifica_solo_admin": "💂‍♂️ Solo Odin può riscrivere la storia.",
             "messaggio_reset_classifica": "_🧹 Protocollo 'Clean Slate' eseguito\\: memoria cancellata\\._",
             "regole_introduzione": (
@@ -614,6 +623,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "partita_interrotta_no_punti":"💔 Nessun punto assegnato, party interrotto",
             "nessuna_classifica":"*📊 Nessuna classifica glamour disponibile 💖*",
             "classifica_finale":"🏆 Classifica Barbie Finale\\:\n\n" + "{lines}",
+            "classifica_solo_admin": "🚫 Solo Barbie Admin possono vedere la classifica 💅",
+            "nessuna_classifica_disponibile": "*📊 Nessuna classifica glamour disponibile 💖*",
+            "testo_classifica": "🏆 Classifica Barbie Finale\\:\n\n" + "{lines}",
             
             "reset_classifica_solo_admin":"🚫 Solo Barbie Admin possono resettare 💅",
             "messaggio_reset_classifica":"_✨ Tutti i punteggi sono stati cancellati 💖_",
@@ -773,7 +785,7 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "errore_invio_cartella":"Non riesco a inviarti la formazione ⚽",
             "non_in_partita":"⛔️ Non sei in partita!",
             
-            "numero_estratto_annuncio":"_📣 È sceso in campo il numero **{current_number_val:02}** ⚽_",
+            "numero_estratto_annuncio":"_📣 È stato giocato il numero **{current_number_val:02}** ⚽_",
 
             "stop_solo_admin": "🚫 Solo l'arbitro può fermare il match",
             "messaggio_stop": "*🛑 Partita interrotta dall'arbitro*",
@@ -797,6 +809,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
 
             "nessuna_classifica":"*📊 Nessuna classifica disponibile*",
             "classifica_finale":"🏆 Classifica finale\\:\n\n" + "{lines}",
+            "classifica_solo_admin": "🚫 Solo l'arbitro può vedere la classifica",
+            "nessuna_classifica_disponibile": "*📊 Nessuna classifica disponibile*",
+            "testo_classifica": "🏆 Classifica finale\\:\n\n" + "{lines}",
 
             "reset_classifica_solo_admin":"🚫 Solo l'arbitro può resettare la classifica",
             "messaggio_reset_classifica":"_🧹 Classifica azzerata\\!_",
