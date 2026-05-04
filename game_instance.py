@@ -39,6 +39,7 @@ class TombolaGame:
         self.overall_scores = {}
         self.usernames = {}
         self.user_houses = {}
+        self.user_teams = {}
         self.announced_join_users = set()
         self.announced_smistamento_users = set()
         self.players_in_game = set()
@@ -394,10 +395,12 @@ class TombolaGame:
         self.current_game_scores = {}
         self.game_interrupted = False
         self.tombole_fatte = 0
-        self.user_houses = {} 
+        self.user_houses = {}
+        self.user_teams = {}
 
         self.announced_join_users = set()
         self.announced_smistamento_users = set()
+        self.announced_team_users = set()
 
         if self.extraction_task and not self.extraction_task.done():
             try:
