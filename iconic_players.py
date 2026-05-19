@@ -4,11 +4,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 # Struttura dati semplice: numero -> lista di file_id sticker
 # I file_id sono placeholder - vanno sostituiti con ID reali di sticker Telegram
 ICONIC_STICKERS = {
-    10: ["CAACAgQAAxkBAAFIB9tp7IBc_6R6Dp1rk4svD2ryUFkuAgACnh4AAq9rWFNKE1MVMRPPJTsE", #Ronaldinho
-        "CAACAgQAAxkBAAFIB9xp7IBckeWsmBZ0nVR015vj1N1wvgACoR4AAq9rWFNaUgy-rjlghzsE", #Maradona
+    10: ["CAACAgQAAxkBAAFKBvtqDBLfoDKr8IXKaFGOJLn4yPtb-AACnh4AAq9rWFNKE1MVMRPPJTsE", #Ronaldinho
+        "CAACAgQAAxkBAAFKBv9qDBMGRpxmQ3fVgtI1M7za2DhcGgACoR4AAq9rWFNaUgy-rjlghzsE", #Maradona
         "CAACAgQAAxkBAAFIB91p7IBc54TxlaxHQO_xqkC52FRQKQACox4AAq9rWFMSGHipVtzMfTsE", #Baggio
         "CAACAgQAAxkBAAFIB95p7IBch5pjxEYVFrCqaqk9_GRkhwACpB4AAq9rWFMlSTEtYThMfzsE", #Morfeo
         "CAACAgQAAxkBAAFIB99p7IBcRKuEJRC3BovTvPvOfhC5FgACpR4AAq9rWFPYVVpXtHy-vTsE", #AnsuFati
@@ -74,23 +75,19 @@ async def trigger_iconic_sticker_event(
         return False
     
     try:
-        # Seleziona uno sticker casuale
         stickers_list = ICONIC_STICKERS[number_drawn]
         selected_sticker = random.choice(stickers_list)
         
-        # Invia lo sticker
         await context.bot.send_sticker(
             chat_id=chat_id,
             sticker=selected_sticker,
             message_thread_id=thread_id
         )
-        
         return True
-    
+
     except Exception as e:
         logger.warning(
             f"[iconic_stickers] Errore nell'invio dello sticker per numero {number_drawn} "
             f"in chat {chat_id}: {e}"
         )
-        # Se lo sticker fallisce, il gioco continua normalmente
         return False
