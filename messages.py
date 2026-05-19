@@ -785,7 +785,7 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "errore_invio_cartella":"Non riesco a inviarti la formazione ⚽",
             "non_in_partita":"⛔️ Non sei in partita!",
             
-            "numero_estratto_annuncio":"_📣 È stato giocato il numero **{current_number_val:02}** ⚽_",
+            "numero_estratto_annuncio":"_📣 È sceso in campo il numero **{current_number_val:02}** ⚽_",
 
             "stop_solo_admin": "🚫 Solo l'arbitro può fermare il match",
             "messaggio_stop": "*🛑 Partita interrotta dall'arbitro*",
@@ -808,13 +808,13 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
             "partita_interrotta_no_punti":"🌫️ Match sospeso: risultato non valido",
 
             "nessuna_classifica":"*📊 Nessuna classifica disponibile*",
-            "classifica_finale":"🏆 Classifica finale\\:\n\n" + "{lines}",
+            "classifica_finale":"*🏆 Classifica del campionato\\:*\n\n" + "{lines}",
             "classifica_solo_admin": "🚫 Solo l'arbitro può vedere la classifica",
             "nessuna_classifica_disponibile": "*📊 Nessuna classifica disponibile*",
-            "testo_classifica": "🏆 Classifica finale\\:\n\n" + "{lines}",
+            "testo_classifica": "*🏆 Classifica del campionato\\:*\n\n" + "{lines}",
 
             "reset_classifica_solo_admin":"🚫 Solo l'arbitro può resettare la classifica",
-            "messaggio_reset_classifica":"_🧹 Classifica azzerata\\!_",
+            "messaggio_reset_classifica":"_🧹 Campionato terminato e classifica azzerata\\!_",
 
             "vincitore_ambo": "_⚽ @{escaped} segna il primo gol\\: Doppietta in arrivo\\!_",
             "vincitore_terno": "_🔥 @{escaped} è scatenato\\: Tripletta\\!_",
