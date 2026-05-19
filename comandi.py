@@ -75,7 +75,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if photo_path and os.path.exists(photo_path):
         try:
             f = open(photo_path, 'rb')
-            await context.bot.send_photo(
+            msg = await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=f,
                 caption=caption,
@@ -83,26 +83,29 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_thread_id=thread_id,
                 parse_mode=ParseMode.MARKDOWN_V2
             )
+            game.join_message_id = msg.message_id
             try:
                 f.close()
             except Exception:
                 pass
         except Exception as e:
-            await context.bot.send_message(
+            msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=caption,
                 reply_markup=reply_markup,
                 message_thread_id=thread_id,
                 parse_mode=ParseMode.MARKDOWN_V2
             )
+            game.join_message_id = msg.message_id
     else:
-        await context.bot.send_message(
+        msg = await context.bot.send_message(
             chat_id=chat_id,
             text=caption,
             reply_markup=reply_markup,
             message_thread_id=thread_id,
             parse_mode=ParseMode.MARKDOWN_V2
         )
+        game.join_message_id = msg.message_id
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -920,6 +923,14 @@ async def end_game(update, context):
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception as e:
                 logger.warning(f"[end_game] Impossibile cancellare msg {msg_id} in chat {chat_id}: {e}")
+
+    # Elimina il messaggio di join per impedire nuovi join
+    if game.join_message_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=game.join_message_id)
+        except Exception as e:
+            logger.warning(f"[end_game] Impossibile cancellare messaggio join {game.join_message_id} in chat {chat_id}: {e}")
+
 
     game.reset_game()
     game.stop_game()
