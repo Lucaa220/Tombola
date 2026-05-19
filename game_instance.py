@@ -51,6 +51,7 @@ class TombolaGame:
         self.custom_scores = premi_default.copy()
         self.extraction_task = None
         self.number_message_ids = []
+        self.join_message_id = None
         self.join_lock = asyncio.Lock()
         self.draw_lock = asyncio.Lock()
         self.group_settings_cache = None
@@ -409,6 +410,7 @@ class TombolaGame:
                 pass
         self.extraction_task = None
         self.number_message_ids.clear()
+        self.join_message_id = None
 
     async def get_username(self, user: Update.effective_user):
         user_id = user.id
