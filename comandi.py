@@ -188,6 +188,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 save_group_settings_to_firebase(group_id, conf)
                             except Exception:
                                 pass
+                    elif tema == 'brawl_stars':
+                        if not getattr(game, 'user_brawlers', None):
+                            game.user_brawlers = {}
+                        assigned_house = game.user_brawlers.get(user_id)
+                        if not assigned_house:
+                            brawlers = [
+                                "Shelly 🔫🤠", "Colt 🔫💥", "Bull 🐂💪", "Brock 🚀🔥", "Barley 🍾🤖", "Nita 🐻",
+                                "El Primo 💪🤼", "Pocho 🎸💀", "Rosa 🌹🥊", "Jessie 🔧⚡", "Tick 💣🤖",
+                                "8-Bit 🎮🤖",
+
+                                "Dynamike 🧨👴", "Rico 🤖🔫", "Darryl 🛢️🏴‍☠️", "Penny 🏴‍☠️💰", "Carl ⛏️",
+                                "Jacky 🔨👷", "Gus 👻🎈", "Bo 🏹🦅", "Emz 📸💜", "Stu 🏍️🔥",
+                                "Piper ☂️🎯", "Pam ❤️🔧", "Frank 🔨⚡", "Bibi ⚾😎", "Bea 🐝", "Nani 👁️🤖",
+                                "Edgar 🧣🥷", "Griff 💵", "Grom 💣", "Bonnie 🎪💣", "Gale ❄️",
+                                "Colette 📖💘", "Belle ⚡💰", "Ash 🗑️😡", "Lola 🌟🎭", "Sam 🥊⚙️",
+                                "Mandy 🍬👑", "Maisie ⚡🎯", "Hank 🦐", "Pearl 🍪🤖",
+                                "Larry & Lawrie 👮👮", "Angelo 🦟🏹", "Berry 🦄🍦", "Meeple 🎲♟️",
+                                "Shade 🌑👻", "Trunk 🌳", "Bolt ⚡🤖",
+
+                                "Mortis 🦇⚰️", "Tara 🔮🃏", "Gene 🧞", "Max ⚡🏃", "Mr. P 🐧🎩",
+                                "Sprout 🌱🤖", "Byron 🧪💀", "Squeak 💙💣", "Lou 🍦❄️", "Ruffs 🐶⭐",
+                                "Buzz 🦖", "Fang 🥋🦶", "Eve 👽🥚", "Janet 🎤🚀", "Otis 🐙🎨",
+                                "Buster 🎥🛡️", "Gray 🎩🌀", "R-T 📡🤖", "Willow 🐸🧙", "Doug 🌭❤️",
+                                "Chuck 🚂⚡", "Charlie 🕷️🎪", "Mico 🐒🎤", "Melodie 🎵💖",
+                                "Lily 🌸🗡️", "Clancy 🦞", "Moe 🐭💎", "Juju 🪄🎭", "Ollie 🛹🎵",
+                                "Lumi 💡❄️", "Finx ⏳🤖", "Jae-Yong 🎤⭐", "Alli 🐊🗡️",
+                                "Mina ⛏️💎", "Ziggy 🦊", "Gigi 🎀", "Glowy ✨",
+                                "Najia 🐍", "Damian 🌙", "Starr Nova 🌟🚀",
+
+                                "Spike 🌵", "Crow 🐦☠️", "Leon 🦎🥷", "Sandy 😴🏜️",
+                                "Amber 🔥", "Meg 🤖🔧", "Surge ⚡🤖", "Chester 🎭🎲",
+                                "Cordelius 🍄", "Kit 🐱🎬", "Draco 🐉🎸",
+                                "Kenji 🍣⚔️", "Kaze 🌪️🥷", "Sirius ⭐🌌", "Pierce 🏹"
+                            ]
+                            assigned_house = random.choice(brawlers)
+                            game.user_brawlers[user_id] = assigned_house
 
                     cartella = game.players[user_id]
                     formatted_cartella = game.format_cartella(cartella)
@@ -214,6 +250,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 text_annuncio = get_testo_tematizzato('annuncio_smistamento', tema, escaped_username=escaped_username, house=house_disp)
                                 await context.bot.send_message(chat_id=group_id, text=text_annuncio, parse_mode=ParseMode.MARKDOWN_V2, message_thread_id=game.thread_id if game.thread_id else None)
                             game.announced_smistamento_users.add(user_id)
+                    elif tema == 'brawl_stars':
+                        if user_id not in getattr(game, 'announced_join_users', set()):
+                            username_display = f"@{esc(update.effective_user.username)}" if update.effective_user.username else esc(update.effective_user.full_name)
+                            text_annuncio = get_testo_tematizzato('annuncio_unione', tema, username=username_display, brawler=assigned_house or 'Brawler sconosciuto')
+                            await context.bot.send_message(
+                                chat_id=group_id,
+                                text=text_annuncio,
+                                parse_mode=ParseMode.MARKDOWN_V2,
+                                message_thread_id=game.thread_id if game.thread_id else None
+                            )
+                            game.announced_join_users.add(user_id)
                     else:
                         if user_id not in getattr(game, 'announced_join_users', set()):
                             escaped_username = esc(update.effective_user.username or update.effective_user.full_name)
@@ -396,6 +443,41 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         pass
                     
                     game.announced_smistamento_users.add(user_id)
+        elif tema == 'brawl_stars':
+            if not getattr(game, 'user_brawlers', None):
+                game.user_brawlers = {}
+
+            assigned_house = game.user_brawlers.get(user_id)
+            if not assigned_house:
+                brawlers = [
+                    "Shelly 🔫🤠", "Colt 🔫💥", "Bull 🐂💪", "Brock 🚀🔥", "Barley 🍾🤖", "Nita 🐻", "El Primo 💪🤼", "Pocho 🎸💀", "Rosa 🌹🥊", "Jessie 🔧⚡",
+                    "Dynamike 🧨👴", "Rico 🤖🔫", "Darryl 🛢️🏴‍☠️", "Penny 🏴‍☠️💰", "Carl ⛏️", "Jacky 🔨👷", "Gus 👻🎈", "Bo 🏹🦅", "Piper ☂️🎯", "Pam ❤️🔧",
+                    "Frank 🔨⚡", "Bibi ⚾😎", "Bea 🐝", "Nani 👁️🤖", "Edgar 🧣🥷", "Griff 💵", "Grom 💣", "Bonnie 🎪💣", "Gale ❄️", "Colette 📖💘",
+                    "Belle ⚡💰", "Ash 🗑️😡", "Lola 🌟🎭", "Sam 🥊⚙️", "Mandy 🍬👑", "Maisie ⚡🎯", "Hank 🦐", "Pearl 🍪🤖", "Larry & Lawrie 👮👮", "Angelo 🦟🏹",
+                    "Berry 🦄🍦", "Meeple 🎲♟️", "Shade 🌑👻", "Mortis 🦇⚰️", "Tara 🔮🃏", "Gene 🧞", "Max ⚡🏃", "Mr. P 🐧🎩", "Sprout 🌱🤖", "Byron 🧪💀",
+                    "Squeak 💙💣", "Lou 🍦❄️", "Ruffs 🐶⭐", "Buzz 🦖", "Fang 🥋🦶", "Eve 👽🥚", "Janet 🎤🚀", "Otis 🐙🎨", "Buster 🎥🛡️", "Gray 🎩🌀",
+                    "R-T 📡🤖", "Willow 🐸🧙", "Doug 🌭❤️", "Chuck 🚂⚡", "Charlie 🕷️🎪", "Mico 🐒🎤", "Melodie 🎵💖", "Lily 🌸🗡️", "Clancy 🦞", "Moe 🐭💎",
+                    "Juju 🪄🎭", "Ollie 🛹🎵", "Lumi 💡❄️", "Finx ⏳🤖", "Jae-Yong 🎤⭐", "Alli 🐊🗡️", "Spike 🌵", "Crow 🐦☠️", "Leon 🦎🥷", "Sandy 😴🏜️",
+                    "Amber 🔥", "Meg 🤖🔧", "Surge ⚡🤖", "Chester 🎭🎲", "Cordelius 🍄", "Kit 🐱🎬", "Draco 🐉🎸", "Kenji 🍣⚔️", "Kaze 🌪️🥷", "Sirius ⭐🌌",
+                ]
+                assigned_house = random.choice(brawlers)
+                game.user_brawlers[user_id] = assigned_house
+
+            await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
+
+            if user_id not in getattr(game, 'announced_join_users', set()):
+                if update.effective_user.username:
+                    username_display = f"@{esc(update.effective_user.username)}"
+                else:
+                    username_display = esc(update.effective_user.full_name)
+                text_annuncio = get_testo_tematizzato('annuncio_unione', tema, username=username_display, brawler=assigned_house)
+                await context.bot.send_message(
+                    chat_id=group_chat_id,
+                    text=text_annuncio,
+                    message_thread_id=thread_id,
+                    parse_mode=ParseMode.MARKDOWN_V2
+                )
+                game.announced_join_users.add(user_id)
         elif tema == 'calcio':
             if not getattr(game, 'user_teams', None):
                 game.user_teams = {}
@@ -453,6 +535,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "Potenza 🔴🔵", "Salernitana 🔴",
                     "Siracusa 🔵", "Sorrento 🔴",
                     "Team Altamura 🔵", "Trapani 🔴"
+
+                    #SQUADRE SCELTE DAGLI UTENTI
+                    "Nocerina 🔴⚫️", "Petacciato 🟡⚫"
                 ]
                 assigned_team = random.choice(serie_abc)
                 game.user_teams[user_id] = assigned_team
@@ -812,7 +897,7 @@ async def estrai(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     logger.error(f"[extract_loop] Errore nell'evento sticker calcio per numero {current_number_val}: {e}")
 
-            if current_number_val in [69, 90] and tema not in ['harry_potter', 'marvel', 'barbie', 'calcio']:
+            if current_number_val in [69, 90] and tema in ['normale']:
                 sticker_special = get_sticker_for_number(current_number_val, tema)
                 if sticker_special:
                     try:
