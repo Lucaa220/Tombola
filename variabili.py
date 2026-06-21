@@ -248,6 +248,34 @@ THEME_STICKERS = {
         110: "CAACAgIAAxkBAAFH5fFp6jHbvLHs5KGyNoXEvSK-DP74jQACKEcAAjhg-UlDgpPK0uCR6DsE",
         404: "CAACAgIAAxkBAAFH5fRp6jHbz5A9KJ74R9Z49OsMIBz1wwACQUMAAlGVIEqV-lHkjfHgNDsE",
         "final": "CAACAgIAAxkBAAFH5fVp6jHblM5xskxKoIL20iwGX1fQRwAC3kkAAoXZIEq-rAZQv3QLzTsE"
+    },
+    "brawl_stars": {
+        104: "CAACAgIAAxkBAAFL-XFqKEBqCxwoeqPf-5gt5za0m3RD8QACZksAAuuggUnXDDzlqbKngTsE",
+        666: "CAACAgIAAxkBAAFL-WxqKEBN6ttjNdvHGwydrLM97DZjvwACGkoAAqeXgUkxDOuMlJtZCjsE",
+        110: "CAACAgIAAxkBAAFL-WhqKEAmW7dCdAUV-v7Sq261bbmLjgAC2kkAAmvLgUn88IS8aJAQ_DsE",
+        404: "CAACAgIAAxkBAAFL-XdqKECFb_v_SXe17_a76JmkXBLnUwACUU8AAr3fgEkXvJEu88XAPzsE",
+        "final": "CAACAgQAAxkBAAFL-VtqKD_NiV-Ezl2EX0hP1f8ir7ldQAAC8h0AAp3jIFBsDc08opN-rjsE"
+    },
+    "simpson": {
+        110: "CAACAgQAAxkBAAExyBZnsMNjcmrjrNQpNTTiJDhIuaqLEAACLhcAAsNrSVEvCd8T5g72HDYE",
+        666: "CAACAgEAAxkBAAFNBxJqN80dhZqTWMuL-lxQuHxPE3lDOwAC4AIAAnyT6EY2ldRtn86A4DwE",
+        104: "CAACAgEAAxkBAAFNBxRqN80dRfFW4dye37QsJ3zwxWsbSgACcQMAAmLo6UezbW6seQya0DwE",
+        404: "CAACAgEAAxkBAAFNBxVqN80d4qZKUD0bblquE6QPhmAkWgAC7wIAAlnv8EfyKokUaK0B7jwE",
+        "final": "CAACAgEAAxkBAAFNBxZqN80duVAJHqybV4mVYlLoivrMJQACwQMAAuxh6EcXY0l82DZLODwE"
+    },
+    "winx": {
+        104: "CAACAgIAAxkBAAFMtllqMraNj04shpsiI3j_di9brGg59QACL1EAAisnEUiwifl5Rb0hrjwE",
+        666: "CAACAgIAAxkBAAFMtlZqMraNvNQBngLD1D_x7S_7GfmYXAACLgADv3S4K-NfJXRhqDe6PAQ",
+        110: "CAACAgIAAxkBAAFMtlhqMraNNQ5MVv9aSMscT9K1btTjpAAC8FIAAkwKcEvVhvybDD9kIjwE",
+        404: "CAACAgIAAxkBAAFMtldqMraNLbULwdQZez8AAQ1cqxlWJ-sAAnRuAAK8hQlIZpS0eb8l8y88BA",
+        "final": "CAACAgIAAxkBAAFMtlpqMraNTGeOdGlVbPU9LtoqyRfPbwACEx8AAvsWsUlULWYooqcOdjwE"
+    },
+    "il_mondo_di_patty": {
+        104: "CAACAgQAAxkBAAExyBZnsMNjcmrjrNQpNTTiJDhIuaqLEAACLhcAAsNrSVEvCd8T5g72HDYE",
+        666: "CAACAgQAAxkBAAEx-sBnuLFsYCU3q7RM7U0-kKNSkEHAhgACXAADIPteF9q_7MKC2ERiNgQ",
+        110: "CAACAgQAAxkBAAE1oqxoOXr1BaVGLmjQ6UfsbRTTcVOgtQACJwoAArybIFHOnHbz_EYnizYE",
+        404: "CAACAgQAAxkBAAE1oq5oOXsd4KgUBf_Zprzwu8ewEMVqmAACowwAAkwu8FPV9fZm6lrXPDYE",
+        "final": "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
     }
 
 }
@@ -281,6 +309,18 @@ THEME_SETTINGS = {
         "stickers_enabled": True
     },
     "calcio": {
+        "stickers_enabled": True
+    },
+    "brawl_stars": {
+        "stickers_enabled": True
+    },
+    "simpson": {
+        "stickers_enabled": True
+    },
+    "winx": {
+        "stickers_enabled": True
+    },
+    "il_mondo_di_patty": {
         "stickers_enabled": True
     }
 }
@@ -320,6 +360,34 @@ THEME_FEATURES = {
         "666": True,
         "404": True,
         "Tombolino": True
+    },
+    "brawl_stars": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    },
+    "simpson": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    },
+    "winx": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
+    },
+    "il_mondo_di_patty": {
+        "104": True,
+        "110": True,
+        "666": True,
+        "404": True,
+        "Tombolino": True
     }
 }
 
@@ -353,7 +421,11 @@ THEME_ANNOUNCEMENT_PHOTOS = {
     "harry_potter": "harry.png",
     "marvel": "marvel.png",
     "barbie": "barbie.png",
-    "calcio": "calcio.png"
+    "calcio": "calcio.png",
+    "brawl_stars": "brawl.png",
+    "simpson": "simpson.png",
+    "winx": "winx.png",
+    "il_mondo_di_patty": "normale.png"
 }
 
 def get_announcement_photo(tema: str = 'normale'):
