@@ -248,12 +248,19 @@ async def show_tema_menu(query, chat_id_str, settings, tema):
     current_tema = settings.get(chat_id_str, {}).get('tema', 'normale')
     keyboard = [
         [
-            InlineKeyboardButton(f"Normale {'✅' if current_tema == 'normale' else ''}", callback_data='set_tema_normale'),
-            InlineKeyboardButton(f"Harry Potter {'✅' if current_tema == 'harry_potter' else ''}", callback_data='set_tema_harry_potter')],
-            [InlineKeyboardButton(f"Marvel {'✅' if current_tema == 'marvel' else ''}", callback_data='set_tema_marvel'), 
-            InlineKeyboardButton(f"Barbie {'✅' if current_tema == 'barbie' else ''}", callback_data='set_tema_barbie')
+            InlineKeyboardButton(f"🌐 Normale {'✅' if current_tema == 'normale' else ''}", callback_data='set_tema_normale'),
+            InlineKeyboardButton(f"🪄 Harry Potter {'✅' if current_tema == 'harry_potter' else ''}", callback_data='set_tema_harry_potter'),
+            InlineKeyboardButton(f"🛡 Marvel {'✅' if current_tema == 'marvel' else ''}", callback_data='set_tema_marvel')
         ],
-        [InlineKeyboardButton(f"Calcio {'✅' if current_tema == 'calcio' else ''}", callback_data='set_tema_calcio')],
+        [
+            InlineKeyboardButton(f"⚽️ Calcio {'✅' if current_tema == 'calcio' else ''}", callback_data='set_tema_calcio'),
+            InlineKeyboardButton(f"⚔️ Brawl Stars {'✅' if current_tema == 'brawl_stars' else ''}", callback_data='set_tema_brawl_stars'),
+            InlineKeyboardButton(f"🎀 Barbie {'✅' if current_tema == 'barbie' else ''}", callback_data='set_tema_barbie')
+        ],
+        [
+            InlineKeyboardButton(f"🍩 Simpson {'✅' if current_tema == 'simpson' else ''}", callback_data='set_tema_simpson'),
+            InlineKeyboardButton(f"🪽 Winx {'✅' if current_tema == 'winx' else ''}", callback_data='set_tema_winx'),
+        ],
         [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -329,8 +336,27 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_group_settings_to_firebase(chat_id_obj, settings)
         await show_tema_menu(query, chat_id_str, settings, tema)
         return
+    if action == 'set_tema_brawl_stars':
+        settings[chat_id_str]['tema'] = 'brawl_stars'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
+    if action == 'set_tema_simpson':
+        settings[chat_id_str]['tema'] = 'simpson'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
+    if action == 'set_tema_winx':
+        settings[chat_id_str]['tema'] = 'winx'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
+    if action == 'set_tema_il_mondo_di_patty':
+        settings[chat_id_str]['tema'] = 'il_mondo_di_patty'
+        save_group_settings_to_firebase(chat_id_obj, settings)
+        await show_tema_menu(query, chat_id_str, settings, tema)
+        return
 
-    
     if action == 'set_manual':
         settings[chat_id_str]['extraction_mode'] = 'manual'
         save_group_settings_to_firebase(chat_id_obj, settings)
@@ -578,7 +604,7 @@ async def start_webserver() -> None:
 
     logger.info(f"Webserver avviato su 0.0.0.0:{PORT}")
 
-async def main(polling: bool = False) -> None:
+def main() -> None:
     load_dotenv()
     TOKEN = os.getenv('TOKEN')
 
@@ -586,13 +612,6 @@ async def main(polling: bool = False) -> None:
         logger.error("La variabile d'ambiente TOKEN deve essere definita.")
         return
 
-    if not polling:
-        WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-        if not WEBHOOK_URL:
-            logger.error("La variabile d'ambiente WEBHOOK_URL deve essere definita per la modalità webhook.")
-            return
-
-    # Creazione dell’Application (builder)
     global application
     application = Application.builder().token(TOKEN).build()
 
@@ -612,26 +631,16 @@ async def main(polling: bool = False) -> None:
     application.add_handler(CommandHandler('logactivity', logactivity))
     application.add_handler(CommandHandler('logclean', logclean))
 
-    # Handler combinato per tutti i callback
     application.add_handler(CallbackQueryHandler(combined_button_handler))
-
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    await application.initialize()
-
-    if polling:
-        logger.info("Avvio in modalità polling...")
-        await application.run_polling(allowed_updates=["callback_query", "message", "chat_member"])  # Specificato allowed_updates per includere callback esplicitamente
-    else:
-        await application.bot.set_webhook(WEBHOOK_URL)
-        logger.info(f"Webhook impostato su: {WEBHOOK_URL}")
-
-        await start_webserver()
-
-        await asyncio.Event().wait()
+    logger.info("Avvio in modalità polling...")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    application.run_polling(
+        allowed_updates=["callback_query", "message", "chat_member"],
+        drop_pending_updates=True
+    )
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Avvia il bot Telegram per la tombola.')
-    parser.add_argument('--polling', action='store_true', help='Avvia il bot in modalità polling invece di webhook.')
-    args = parser.parse_args()
-    asyncio.run(main(polling=args.polling))
+    main()
