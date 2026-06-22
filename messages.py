@@ -1171,6 +1171,7 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
                 "Se attivato, ricompensa il *secondo cittadino* che completa la cartella\\. Non è il titolo di eroe di "
                 "Springfield, ma una ciambella gratis non si rifiuta mai\\._"
             ),
+            "pannello_controllo": "*🍩 Pannello di Controllo di Springfield*\n\n_📺 Scegli quale sezione vuoi configurare_",
             "annuncio_unione": "*_🍩 {username} è entrato a Springfield\\!_*",
             "classifica_finale": "*🍩 Classifica finale di Springfield\\:\n\n{lines}",
             "classifica_solo_admin": "🚫 Solo i moderatori di Springfield possono vedere la classifica\\.",
