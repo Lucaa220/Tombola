@@ -1050,9 +1050,9 @@ def get_testo_tematizzato(chiave: str, tema: str = "normale", **kwargs) -> str:
                             "_Non solo perdi tutte le gemme collezionate fino a questo momento, perdi anche dei punti come penalità per averlo fatto\\._\n\n"
                             "*5️⃣ Tombolino Brawl*\n"
                             "_Non avrai vinto la battaglia, ma essere arrivato in fondo ti concede comunque di ottenere qualche punto per aver combattuto in modo valoroso fino all'ultimo\\._",
-            "tombola_prima": "_🏆 @{escaped_username} chiude la partita in stile Brawl Stars\\!{extra}_",
+            "tombola_prima": "_🏆 @{escaped_username} chiude la partita con una Tombola in stile Brawl Stars\\!{extra}_",
             "tombolino": "_🥇 @{escaped_username} conquista il Tombolino da campione di arena\\!_",
-            "classifica_finale": "*⚡ Classifica finale dell'arena\\:\n\n{lines}",
+            "classifica_finale": "*⚡ Classifica finale dell'arena\\:*\n\n{lines}",
             "classifica_solo_admin": "🚫 Solo i capitani possono vedere la classifica dell'arena.",
             "descrizione_admin": "_👑 Decidi se il comando della battaglia resta solo ai capitani o passa a tutta la squadra\\:_",
             "descrizione_estrazione": "_⚡ Vuoi far partire i numeri automaticamente o manualmente come in un vero match di arena\\?_",
