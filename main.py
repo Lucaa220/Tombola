@@ -635,12 +635,21 @@ def main() -> None:
     application.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
     logger.info("Avvio in modalità polling...")
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    application.run_polling(
-        allowed_updates=["callback_query", "message", "chat_member"],
-        drop_pending_updates=True
-    )
+
+    async def run() -> None:
+        await start_webserver()
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(
+            allowed_updates=["callback_query", "message", "chat_member"],
+            drop_pending_updates=True
+        )
+        logger.info("Bot e webserver avviati correttamente.")
+        # mantiene il processo vivo finché non viene fermato
+        stop_event = asyncio.Event()
+        await stop_event.wait()
+
+    asyncio.run(run())
 
 if __name__ == '__main__':
     main()
