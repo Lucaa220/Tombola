@@ -19,6 +19,7 @@ from messages import get_testo_tematizzato, get_feature_name
 
 load_dotenv()
 
+_non_admin_settings_clicks = {}
 TOKEN = os.getenv('TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 PORT = int(os.getenv('PORT', '8443'))
@@ -274,10 +275,41 @@ async def show_tema_menu(query, chat_id_str, settings, tema):
 async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Entrato in settings_button")
     query = update.callback_query
-    await query.answer()
-
-    chat_id_obj, _ = get_chat_id_or_thread(update)
+    
+    chat_id_obj, thread_id = get_chat_id_or_thread(update)
     chat_id_str = str(chat_id_obj)
+
+    user = query.from_user
+    user_id = user.id
+
+    if not await is_admin(update, context):
+        key = (chat_id_obj, user_id)
+        _non_admin_settings_clicks[key] = _non_admin_settings_clicks.get(key, 0) + 1
+        
+        # Se preme per più di 5 volte (quindi al sesto tentativo), invia l'avvertenza
+        if _non_admin_settings_clicks[key] > 5:
+            _non_admin_settings_clicks[key] = 0  # Resetta il contatore dopo l'avviso
+            
+            # Crea la menzione cliccabile sicura per il MarkdownV2
+            mention = user.mention_markdown_v2()
+            
+            # Inseriamo il tag all'interno del messaggio formattato
+            avviso = f"*⚠️ {mention} ti taglio le mani se tocchi ancora i bottoni*"
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id_obj,
+                    text=avviso,
+                    message_thread_id=thread_id,
+                    parse_mode=ParseMode.MARKDOWN_V2
+                )
+            except Exception as e:
+                logger.error(f"Errore invio avviso spam bottoni impostazioni: {e}")
+        
+        # Non restituisce nulla all'utente (risolve lo stato di caricamento del bottone silenziosamente)
+        await query.answer()
+        return
+    await query.answer()
 
     settings = load_group_settings_from_firebase(chat_id_obj)
     if chat_id_str not in settings:
@@ -309,7 +341,7 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Azione {action} completata")
         return
     if action == 'menu_tema':
-        await show_tema_menu(query, chat_id_str, settings, tema) # Ricarica settings per sicurezza
+        await show_tema_menu(query, chat_id_str, settings, tema)
         return
     if action == 'set_tema_normale':
         settings[chat_id_str]['tema'] = 'normale'
