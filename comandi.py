@@ -447,21 +447,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not getattr(game, 'user_brawlers', None):
                 game.user_brawlers = {}
 
-            assigned_house = game.user_brawlers.get(user_id)
-            if not assigned_house:
-                brawlers = [
-                    "Shelly 🔫🤠", "Colt 🔫💥", "Bull 🐂💪", "Brock 🚀🔥", "Barley 🍾🤖", "Nita 🐻", "El Primo 💪🤼", "Pocho 🎸💀", "Rosa 🌹🥊", "Jessie 🔧⚡",
-                    "Dynamike 🧨👴", "Rico 🤖🔫", "Darryl 🛢️🏴‍☠️", "Penny 🏴‍☠️💰", "Carl ⛏️", "Jacky 🔨👷", "Gus 👻🎈", "Bo 🏹🦅", "Piper ☂️🎯", "Pam ❤️🔧",
-                    "Frank 🔨⚡", "Bibi ⚾😎", "Bea 🐝", "Nani 👁️🤖", "Edgar 🧣🥷", "Griff 💵", "Grom 💣", "Bonnie 🎪💣", "Gale ❄️", "Colette 📖💘",
-                    "Belle ⚡💰", "Ash 🗑️😡", "Lola 🌟🎭", "Sam 🥊⚙️", "Mandy 🍬👑", "Maisie ⚡🎯", "Hank 🦐", "Pearl 🍪🤖", "Larry & Lawrie 👮👮", "Angelo 🦟🏹",
-                    "Berry 🦄🍦", "Meeple 🎲♟️", "Shade 🌑👻", "Mortis 🦇⚰️", "Tara 🔮🃏", "Gene 🧞", "Max ⚡🏃", "Mr. P 🐧🎩", "Sprout 🌱🤖", "Byron 🧪💀",
-                    "Squeak 💙💣", "Lou 🍦❄️", "Ruffs 🐶⭐", "Buzz 🦖", "Fang 🥋🦶", "Eve 👽🥚", "Janet 🎤🚀", "Otis 🐙🎨", "Buster 🎥🛡️", "Gray 🎩🌀",
-                    "R-T 📡🤖", "Willow 🐸🧙", "Doug 🌭❤️", "Chuck 🚂⚡", "Charlie 🕷️🎪", "Mico 🐒🎤", "Melodie 🎵💖", "Lily 🌸🗡️", "Clancy 🦞", "Moe 🐭💎",
-                    "Juju 🪄🎭", "Ollie 🛹🎵", "Lumi 💡❄️", "Finx ⏳🤖", "Jae-Yong 🎤⭐", "Alli 🐊🗡️", "Spike 🌵", "Crow 🐦☠️", "Leon 🦎🥷", "Sandy 😴🏜️",
-                    "Amber 🔥", "Meg 🤖🔧", "Surge ⚡🤖", "Chester 🎭🎲", "Cordelius 🍄", "Kit 🐱🎬", "Draco 🐉🎸", "Kenji 🍣⚔️", "Kaze 🌪️🥷", "Sirius ⭐🌌",
-                ]
-                assigned_house = random.choice(brawlers)
-                game.user_brawlers[user_id] = assigned_house
+            # NESSUN CONTROLLO SUL BRAWLER PRECEDENTE: Ne peschiamo sempre uno nuovo e random!
+            brawlers = [
+                "Shelly 🔫🤠", "Colt 🔫💥", "Bull 🐂💪", "Brock 🚀🔥", "Barley 🍾🤖", "Nita 🐻", "El Primo 💪🤼", "Pocho 🎸💀", "Rosa 🌹🥊", "Jessie 🔧⚡",
+                "Dynamike 🧨👴", "Rico 🤖🔫", "Darryl 🛢️🏴‍☠️", "Penny 🏴‍☠️💰", "Carl ⛏️", "Jacky 🔨👷", "Gus 👻🎈", "Bo 🏹🦅", "Piper ☂️🎯", "Pam ❤️🔧",
+                "Frank 🔨⚡", "Bibi ⚾😎", "Bea 🐝", "Nani 👁️🤖", "Edgar 🧣🥷", "Griff 💵", "Grom 💣", "Bonnie 🎪💣", "Gale ❄️", "Colette 📖💘",
+                "Belle ⚡💰", "Ash 🗑️😡", "Lola 🌟🎭", "Sam 🥊⚙️", "Mandy 🍬👑", "Maisie ⚡🎯", "Hank 🦐", "Pearl 🍪🤖", "Larry & Lawrie 👮👮", "Angelo 🦟🏹",
+                "Berry 🦄🍦", "Meeple 🎲♟️", "Shade 🌑👻", "Mortis 🦇⚰️", "Tara 🔮🃏", "Gene 🧞", "Max ⚡🏃", "Mr. P 🐧🎩", "Sprout 🌱🤖", "Byron 🧪💀",
+                "Squeak 💙💣", "Lou 🍦❄️", "Ruffs 🐶⭐", "Buzz 🦖", "Fang 🥋🦶", "Eve 👽🥚", "Janet 🎤🚀", "Otis 🐙🎨", "Buster 🎥🛡️", "Gray 🎩🌀",
+                "R-T 📡🤖", "Willow 🐸🧙", "Doug 🌭❤️", "Chuck 🚂⚡", "Charlie 🕷️🎪", "Mico 🐒🎤", "Melodie 🎵💖", "Lily 🌸🗡️", "Clancy 🦞", "Moe 🐭💎",
+                "Juju 🪄🎭", "Ollie 🛹🎵", "Lumi 💡❄️", "Finx ⏳🤖", "Jae-Yong 🎤⭐", "Alli 🐊🗡️", "Spike 🌵", "Crow 🐦☠️", "Leon 🦎🥷", "Sandy 😴🏜️",
+                "Amber 🔥", "Meg 🤖🔧", "Surge ⚡🤖", "Chester 🎭🎲", "Cordelius 🍄", "Kit 🐱🎬", "Draco 🐉🎸", "Kenji 🍣⚔️", "Kaze 🌪️🥷", "Sirius ⭐🌌",
+            ]
+            assigned_house = random.choice(brawlers)
+            game.user_brawlers[user_id] = assigned_house
 
             await send_cartella_to_user(user_id, game, group_text, context, tema, assigned_house=assigned_house)
 
@@ -614,7 +613,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Azione non gestita in button: {query.data}")
         await query.answer()
-        
+
 async def get_group_link(context, group_chat_id):
     try:
         chat = await context.bot.get_chat(group_chat_id)
@@ -1030,12 +1029,13 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
     sticker_file_id = get_final_sticker(tema) or "CAACAgQAAxkBAAEt32Rm8Z_GRtaOFHzCVCFePFCU0rk1-wACNQEAAubEtwzIljz_HVKktzYE"
 
     classifica_gruppo = load_classifica_from_firebase(chat_id)
+    
+    # Aggiunto il default= per evitare crash se il tema non ha la chiave 'nessuna_classifica'
     if not classifica_gruppo:
-        group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
+        text_nessuna = get_testo_tematizzato('nessuna_classifica', tema, default="*Nessuna classifica disponibile per questo gruppo\\.*")
         await context.bot.send_message(
             chat_id=chat_id,
-            text=get_testo_tematizzato('nessuna_classifica', tema),
+            text=text_nessuna,
             message_thread_id=thread_id,
             parse_mode=ParseMode.MARKDOWN_V2
         )
@@ -1056,20 +1056,30 @@ async def send_final_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE
         lines.append(esc(raw_line))
 
     if not lines:
-        group_settings = load_group_settings_from_firebase(chat_id)
-        tema = group_settings.get(str(chat_id), {}).get('tema', 'normale') 
+        text_nessuna = get_testo_tematizzato('nessuna_classifica', tema, default="*Nessuna classifica disponibile per questo gruppo\\.*")
         await context.bot.send_message(
             chat_id=chat_id,
-            text=get_testo_tematizzato('nessuna_classifica', tema),
+            text=text_nessuna,
             message_thread_id=thread_id,
             parse_mode=ParseMode.MARKDOWN_V2
         )
         return
 
-    testo = get_testo_tematizzato('classifica_finale', tema, lines="".join(lines))
-    await context.bot.send_message(chat_id=chat_id, text=testo, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
-    await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
+    # Unita la lista stringhe
+    lines_str = "".join(lines)
+    
+    testo = get_testo_tematizzato('classifica_finale', tema, lines=lines_str)
+    
+    # Controllo ultra-safe: se nel file messaggi il tema non conteneva la variabile {lines}, la aggiungiamo a forza
+    if lines_str.strip() and lines_str.strip() not in testo:
+        testo += f"\n\n{lines_str}"
 
+    try:
+        await context.bot.send_message(chat_id=chat_id, text=testo, message_thread_id=thread_id, parse_mode=ParseMode.MARKDOWN_V2)
+        if sticker_file_id:
+            await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id, message_thread_id=thread_id)
+    except Exception as e:
+        logger.error(f"Errore inviando la classifica o lo sticker in chat {chat_id}: {e}")
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.full_name
