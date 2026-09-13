@@ -449,15 +449,33 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # NESSUN CONTROLLO SUL BRAWLER PRECEDENTE: Ne peschiamo sempre uno nuovo e random!
             brawlers = [
-                "Shelly 🔫🤠", "Colt 🔫💥", "Bull 🐂💪", "Brock 🚀🔥", "Barley 🍾🤖", "Nita 🐻", "El Primo 💪🤼", "Pocho 🎸💀", "Rosa 🌹🥊", "Jessie 🔧⚡",
-                "Dynamike 🧨👴", "Rico 🤖🔫", "Darryl 🛢️🏴‍☠️", "Penny 🏴‍☠️💰", "Carl ⛏️", "Jacky 🔨👷", "Gus 👻🎈", "Bo 🏹🦅", "Piper ☂️🎯", "Pam ❤️🔧",
-                "Frank 🔨⚡", "Bibi ⚾😎", "Bea 🐝", "Nani 👁️🤖", "Edgar 🧣🥷", "Griff 💵", "Grom 💣", "Bonnie 🎪💣", "Gale ❄️", "Colette 📖💘",
-                "Belle ⚡💰", "Ash 🗑️😡", "Lola 🌟🎭", "Sam 🥊⚙️", "Mandy 🍬👑", "Maisie ⚡🎯", "Hank 🦐", "Pearl 🍪🤖", "Larry & Lawrie 👮👮", "Angelo 🦟🏹",
-                "Berry 🦄🍦", "Meeple 🎲♟️", "Shade 🌑👻", "Mortis 🦇⚰️", "Tara 🔮🃏", "Gene 🧞", "Max ⚡🏃", "Mr. P 🐧🎩", "Sprout 🌱🤖", "Byron 🧪💀",
-                "Squeak 💙💣", "Lou 🍦❄️", "Ruffs 🐶⭐", "Buzz 🦖", "Fang 🥋🦶", "Eve 👽🥚", "Janet 🎤🚀", "Otis 🐙🎨", "Buster 🎥🛡️", "Gray 🎩🌀",
-                "R-T 📡🤖", "Willow 🐸🧙", "Doug 🌭❤️", "Chuck 🚂⚡", "Charlie 🕷️🎪", "Mico 🐒🎤", "Melodie 🎵💖", "Lily 🌸🗡️", "Clancy 🦞", "Moe 🐭💎",
-                "Juju 🪄🎭", "Ollie 🛹🎵", "Lumi 💡❄️", "Finx ⏳🤖", "Jae-Yong 🎤⭐", "Alli 🐊🗡️", "Spike 🌵", "Crow 🐦☠️", "Leon 🦎🥷", "Sandy 😴🏜️",
-                "Amber 🔥", "Meg 🤖🔧", "Surge ⚡🤖", "Chester 🎭🎲", "Cordelius 🍄", "Kit 🐱🎬", "Draco 🐉🎸", "Kenji 🍣⚔️", "Kaze 🌪️🥷", "Sirius ⭐🌌",
+                "Shelly 🔫🤠", "Colt 🔫💥", "Bull 🐂💪", "Brock 🚀🔥", "Barley 🍾🤖", "Nita 🐻",
+                "El Primo 💪🤼", "Pocho 🎸💀", "Rosa 🌹🥊", "Jessie 🔧⚡", "Tick 💣🤖",
+                "8-Bit 🎮🤖",
+
+                "Dynamike 🧨👴", "Rico 🤖🔫", "Darryl 🛢️🏴‍☠️", "Penny 🏴‍☠️💰", "Carl ⛏️",
+                "Jacky 🔨👷", "Gus 👻🎈", "Bo 🏹🦅", "Emz 📸💜", "Stu 🏍️🔥",
+                "Piper ☂️🎯", "Pam ❤️🔧", "Frank 🔨⚡", "Bibi ⚾😎", "Bea 🐝", "Nani 👁️🤖",
+                "Edgar 🧣🥷", "Griff 💵", "Grom 💣", "Bonnie 🎪💣", "Gale ❄️",
+                "Colette 📖💘", "Belle ⚡💰", "Ash 🗑️😡", "Lola 🌟🎭", "Sam 🥊⚙️",
+                "Mandy 🍬👑", "Maisie ⚡🎯", "Hank 🦐", "Pearl 🍪🤖",
+                "Larry & Lawrie 👮👮", "Angelo 🦟🏹", "Berry 🦄🍦", "Meeple 🎲♟️",
+                "Shade 🌑👻", "Trunk 🌳", "Bolt ⚡🤖",
+
+                "Mortis 🦇⚰️", "Tara 🔮🃏", "Gene 🧞", "Max ⚡🏃", "Mr. P 🐧🎩",
+                "Sprout 🌱🤖", "Byron 🧪💀", "Squeak 💙💣", "Lou 🍦❄️", "Ruffs 🐶⭐",
+                "Buzz 🦖", "Fang 🥋🦶", "Eve 👽🥚", "Janet 🎤🚀", "Otis 🐙🎨",
+                "Buster 🎥🛡️", "Gray 🎩🌀", "R-T 📡🤖", "Willow 🐸🧙", "Doug 🌭❤️",
+                "Chuck 🚂⚡", "Charlie 🕷️🎪", "Mico 🐒🎤", "Melodie 🎵💖",
+                "Lily 🌸🗡️", "Clancy 🦞", "Moe 🐭💎", "Juju 🪄🎭", "Ollie 🛹🎵",
+                "Lumi 💡❄️", "Finx ⏳🤖", "Jae-Yong 🎤⭐", "Alli 🐊🗡️",
+                "Mina ⛏️💎", "Ziggy 🦊", "Gigi 🎀", "Glowy ✨",
+                "Najia 🐍", "Damian 🌙", "Starr Nova 🌟🚀",
+
+                "Spike 🌵", "Crow 🐦☠️", "Leon 🦎🥷", "Sandy 😴🏜️",
+                "Amber 🔥", "Meg 🤖🔧", "Surge ⚡🤖", "Chester 🎭🎲",
+                "Cordelius 🍄", "Kit 🐱🎬", "Draco 🐉🎸",
+                "Kenji 🍣⚔️", "Kaze 🌪️🥷", "Sirius ⭐🌌", "Pierce 🏹"
             ]
             assigned_house = random.choice(brawlers)
             game.user_brawlers[user_id] = assigned_house
